@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Select Database</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-10 rounded-xl shadow-lg w-full max-w-md">
+      <h1 class="text-3xl font-bold mb-6 text-gray-800 text-center">
+        Select a Database
+      </h1>
+
+      <form method="POST" action="/select" class="space-y-6">
+        <div>
+          <label for="db" class="block text-sm font-medium text-gray-700 mb-1">
+            Available Databases
+          </label>
+          <select
+            id="db"
+            name="db"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {{range .Databases}}
+            <option value="{{.}}">{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="flex justify-between items-center">
+          <a
+            href="/reset"
+            class="inline-block py-2 px-5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all"
+            >Reset</a
+          >
+          <button
+            type="submit"
+            class="inline-block py-2 px-5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all"
+          >
+            Show Schema
+          </button>
+        </div>
+      </form>
+    </div>
+  </body>
+</html>

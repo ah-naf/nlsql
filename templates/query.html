@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>NL → SQL</title>
+    <script>
+      function toggleSchema() {
+        const panel = document.getElementById("schema-panel");
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      }
+    </script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+      }
+      textarea {
+        width: 100%;
+        height: 100px;
+      }
+      #schema-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #ccc;
+        display: none;
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Enter your query in plain English</h1>
+    <form method="POST" action="/execute">
+      <textarea
+        name="nl_query"
+        placeholder="e.g. Show me all users who signed up in the last 7 days"
+      ></textarea>
+      <br /><br />
+      <button type="submit">Generate SQL</button>
+      <button type="button" onclick="toggleSchema()">Show/Hide Schema</button>
+    </form>
+
+    <div id="schema-panel">
+      <h2>Current Database Schema</h2>
+      {{if .Schema}} {{range $table, $cols := .Schema}}
+      <h3>{{$table}}</h3>
+      <ul>
+        {{range $cols}}
+        <li>{{.}}</li>
+        {{end}}
+      </ul>
+      {{end}} {{else}}
+      <p><em>No schema available.</em></p>
+      {{end}}
+    </div>
+
+    <p><a href="/select">« Back to database list</a></p>
+  </body>
+</html>

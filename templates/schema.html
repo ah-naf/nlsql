@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schema Details</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <div class="max-w-4xl mx-auto p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold text-gray-800">
+          Schema for <span class="text-indigo-600">{{.SelectedDB}}</span>
+        </h1>
+        <div class="space-x-2">
+          <a
+            href="/select"
+            class="py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+            >Back</a
+          >
+          <a
+            href="/reset"
+            class="py-2 px-4 bg-red-500 text-white rounded hover:bg-red-600 transition"
+            >Reset</a
+          >
+        </div>
+      </div>
+      <div class="space-y-4">
+        {{range $table, $cols := .Schema}}
+        <details class="bg-white rounded-lg shadow p-4">
+          <summary class="cursor-pointer font-medium text-gray-800">
+            {{$table}}
+          </summary>
+          <ul class="mt-2 list-disc list-inside text-gray-700">
+            {{range $cols}}
+            <li>{{.}}</li>
+            {{end}}
+          </ul>
+        </details>
+        {{end}}
+      </div>
+    </div>
+  </body>
+</html>
