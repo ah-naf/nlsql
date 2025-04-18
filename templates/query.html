@@ -43,6 +43,31 @@
         opacity: 0;
         visibility: hidden;
       }
+
+      /* Collapsible table styles */
+      .table-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+      }
+
+      .table-content.expanded {
+        max-height: 500px; /* Adjust based on expected content size */
+        overflow-y: auto;
+      }
+
+      .table-header {
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .rotate-icon {
+        transition: transform 0.3s ease;
+      }
+
+      .rotate-icon.down {
+        transform: rotate(90deg);
+      }
     </style>
   </head>
   <body class="bg-gray-50 h-screen flex overflow-hidden font-sans">
@@ -66,11 +91,16 @@
         </div>
         <div class="overflow-y-auto h-full p-4 pb-20 schema-scroll">
           {{ if .Schema }} {{ range $table, $cols := .Schema }}
-          <div class="mb-6 bg-gray-50 rounded-lg p-3 shadow">
-            <h3 class="font-semibold text-gray-800 mb-2 flex items-center">
-              <i class="fas fa-table mr-2 text-blue-500"></i>{{ $table }}
+          <div class="mb-6 bg-gray-50 rounded-lg p-3 shadow schema-table">
+            <h3
+              class="font-semibold text-gray-800 mb-2 flex items-center justify-between table-header"
+            >
+              <div class="flex items-center">
+                <i class="fas fa-table mr-2 text-blue-500"></i>{{ $table }}
+              </div>
+              <i class="fas fa-chevron-right text-gray-400 rotate-icon"></i>
             </h3>
-            <ul class="space-y-1 text-gray-600">
+            <ul class="space-y-1 text-gray-600 table-content">
               {{ range $cols }}
               <li class="flex items-center py-1 border-b border-gray-100">
                 <span class="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
@@ -156,7 +186,6 @@
     </div>
 
     <script>
-      // Schema toggle functionality
       const schemaPanel = document.getElementById("schema-panel");
       const mainContent = document.getElementById("main-content");
       const schemaBtnMobile = document.getElementById("schema-button");
@@ -190,7 +219,6 @@
             );
           }
         } else {
-          // Desktop view - collapse/expand
           if (schemaPanelVisible) {
             schemaPanel.classList.add("sidebar-collapsed");
             schemaIcon.classList.remove("fa-database");
@@ -210,6 +238,23 @@
       schemaBtnMobile.addEventListener("click", toggleSchema);
       schemaBtnDesktop.addEventListener("click", toggleSchema);
       toggleBtn.addEventListener("click", toggleSchema);
+
+      function setupCollapsibleTables() {
+        const tableHeaders = document.querySelectorAll(".table-header");
+
+        tableHeaders.forEach((header) => {
+          header.addEventListener("click", () => {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector(".rotate-icon");
+
+            content.classList.toggle("expanded");
+
+            icon.classList.toggle("down");
+          });
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", setupCollapsibleTables);
 
       // Responsive behavior
       function handleResize() {
@@ -237,156 +282,6 @@
 
       window.addEventListener("resize", handleResize);
       handleResize(); // Initialize on page load
-
-      // Chat mechanics
-      const chatContainer = document.getElementById("chat-container");
-      const form = document.getElementById("query-form");
-
-      function appendMessage(text, sender) {
-        const wrapper = document.createElement("div");
-        wrapper.classList.add(
-          "flex",
-          sender === "user" ? "justify-end" : "justify-start",
-          "mb-4",
-          "animate-fade-in"
-        );
-
-        const bubble = document.createElement("div");
-        bubble.classList.add(
-          "max-w-md",
-          "px-5",
-          "py-3",
-          "rounded-lg",
-          "shadow-sm",
-          sender === "user"
-            ? "bg-blue-600 text-white"
-            : "bg-white text-gray-800"
-        );
-
-        // For SQL responses, add syntax highlighting
-        if (sender === "server" && text.toLowerCase().includes("select")) {
-          const pre = document.createElement("pre");
-          pre.classList.add("text-sm", "overflow-x-auto");
-          pre.innerText = text;
-          bubble.appendChild(pre);
-        } else {
-          bubble.innerText = text;
-        }
-
-        wrapper.appendChild(bubble);
-        chatContainer.appendChild(wrapper);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-      }
-
-      function appendTable(columns, rows) {
-        const container = document.createElement("div");
-        container.classList.add(
-          "overflow-x-auto",
-          "mb-6",
-          "rounded-lg",
-          "shadow-lg",
-          "animate-fade-in"
-        );
-
-        const table = document.createElement("table");
-        table.classList.add("min-w-full", "bg-white");
-
-        // header
-        const thead = document.createElement("thead");
-        thead.classList.add("bg-gray-100");
-        const headRow = document.createElement("tr");
-        columns.forEach((col) => {
-          const th = document.createElement("th");
-          th.scope = "col";
-          th.classList.add(
-            "px-6",
-            "py-3",
-            "text-left",
-            "text-xs",
-            "font-semibold",
-            "text-gray-700",
-            "uppercase",
-            "tracking-wider"
-          );
-          th.innerText = col;
-          headRow.appendChild(th);
-        });
-        thead.appendChild(headRow);
-        table.appendChild(thead);
-
-        // body
-        const tbody = document.createElement("tbody");
-        tbody.classList.add("divide-y", "divide-gray-200");
-
-        if (!rows || rows.length === 0) {
-          const tr = document.createElement("tr");
-          const td = document.createElement("td");
-          td.colSpan = columns.length;
-          td.classList.add(
-            "px-6",
-            "py-8",
-            "text-center",
-            "text-sm",
-            "text-gray-500"
-          );
-          td.innerText = "No results found";
-          tr.appendChild(td);
-          tbody.appendChild(tr);
-        } else {
-          rows.forEach((row, idx) => {
-            const tr = document.createElement("tr");
-            tr.classList.add(idx % 2 === 0 ? "bg-white" : "bg-gray-50");
-
-            columns.forEach((col) => {
-              const td = document.createElement("td");
-              td.classList.add(
-                "px-6",
-                "py-4",
-                "whitespace-nowrap",
-                "text-sm",
-                "text-gray-800"
-              );
-              td.innerText = row[col] !== null ? row[col] : "";
-              tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-          });
-        }
-
-        table.appendChild(tbody);
-        container.appendChild(table);
-        chatContainer.appendChild(container);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-      }
-
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const input = document.getElementById("nl_query");
-        const question = input.value.trim();
-        if (!question) return;
-
-        appendMessage(question, "user");
-        input.value = "";
-
-        try {
-          const res = await fetch("/execute", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nl_query: question }),
-          });
-          const data = await res.json();
-
-          // server SQL response
-          appendMessage(data.sql, "server");
-
-          // if there's row data, render it
-          if (data.columns && data.columns.length) {
-            appendTable(data.columns, data.rows || []);
-          }
-        } catch (err) {
-          appendMessage("Error: " + err.message, "server");
-        }
-      });
     </script>
   </body>
 </html>
