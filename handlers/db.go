@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"nlsql/models"
@@ -117,8 +118,15 @@ func SelectDB(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Schema error: %v", err))
 		return
 	}
-	sess.Set("schema", schema)
+	
+	b, err := json.Marshal(schema)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "schema marshal error: %v", err)
+		return
+	}
+	sess.Set("schema", string(b))
 	sess.Save()
+
 	c.Redirect(http.StatusSeeOther, "/query")
 }
 

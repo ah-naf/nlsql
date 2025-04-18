@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -11,13 +12,17 @@ import (
 func ShowQueryPage(c *gin.Context) {
 	sess := sessions.Default(c)
 
-	raw := sess.Get("schema")
-	schema, ok := raw.(map[string][]string)
-	if !ok {
-		schema = make(map[string][]string)
+	raw, ok := sess.Get("schema").(string)
+	if !ok || raw == "" {
+		c.String(http.StatusBadRequest, "no schema in session; please re‑select your database")
+		return
 	}
 
-	fmt.Printf("▶ Loaded schema: %#v\n", schema)
+	var schema map[string][]string
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("failed to parse schema from session: %v", err))
+		return
+	}
 
 	c.HTML(http.StatusOK, "query.html", gin.H{
 		"Schema": schema,
