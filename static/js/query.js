@@ -22,7 +22,7 @@ function renderSchema(schema) {
   Object.entries(schema).forEach(([tableName, columns]) => {
     const processedColumns = columns.map((col) => {
       // Determine FK and PK from Go's JSON
-      const isFK = Boolean(col.foreign_table && col.foreign_column);
+      const isFK = Boolean(col.foreign_table.Valid && col.foreign_column.Valid);
       const isPK = Boolean(col.is_primary_key);
       const constraints = [];
       if (isPK) constraints.push("PK");
@@ -77,14 +77,6 @@ function renderSchema(schema) {
                         color = "text-cyan-700 bg-cyan-50";
                         break;
                     }
-                    const badges = col.constraints
-                      .map((c) => {
-                        let cls = "";
-                        if (c === "PK") cls = "bg-yellow-100 text-yellow-800";
-                        if (c === "FK") cls = "bg-indigo-100 text-indigo-800";
-                        return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${c}</span>`;
-                      })
-                      .join("");
 
                     return `
                     <li class="py-2 px-3 hover:bg-gray-50 rounded-md flex items-center justify-between">
