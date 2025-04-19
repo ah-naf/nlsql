@@ -27,8 +27,19 @@ type Message struct {
 }
 
 type RequestBody struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+	NLQuery   string    `json:"nl_query"`
+	Confirmed bool      `json:"confirmed"`
+	History   []Message `json:"history"`
+}
+
+type ResponseBody struct {
+	Status            string                   `json:"status,omitempty"`
+	Error             string                   `json:"error,omitempty"`
+	NeedsConfirmation bool                     `json:"needs_confirmation,omitempty"`
+	SQLPreview        string                   `json:"sql_preview,omitempty"`
+	Table             []map[string]interface{} `json:"table,omitempty"`
+	Message           string                   `json:"message,omitempty"`
+	History           []Message                `json:"history,omitempty"`
 }
 
 func needsConfirmation(sql string) bool {
@@ -38,7 +49,7 @@ func needsConfirmation(sql string) bool {
 func loadEnv() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 }
 
@@ -77,117 +88,153 @@ func buildPrompt(schema map[string][]string, userText string) string {
 	)
 }
 
-func connectLLM(prompt string) (string, error) {
+func connectLLM(messages []Message) (string, error) {
 	loadEnv()
 	token := os.Getenv("LLM_API_KEY")
 	if token == "" {
-		return "", fmt.Errorf("DeepSeek API key not found in environment")
+		return "", fmt.Errorf("LLM API key not found in environment")
 	}
 
-	reqBody := RequestBody{
-		Model: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-		Messages: []Message{
-			{Role: "user", Content: prompt},
-		},
+	reqBody := struct {
+		Model    string    `json:"model"`
+		Messages []Message `json:"messages"`
+	}{
+		Model:    "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+		Messages: messages,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		log.Fatalln(err)
 		return "", err
 	}
-
-	req, err := http.NewRequest("POST", deepseekURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Fatalln(err)
-		return "", err
-	}
+	req, _ := http.NewRequest("POST", deepseekURL, bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		log.Fatalln(err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error: %s", bodyBytes)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API error: %s", body)
 	}
 
-	var result struct {
+	var out struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Fatalln(err)
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", err
 	}
-
-	if len(result.Choices) == 0 {
+	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("no response from LLM")
 	}
-
-	return result.Choices[0].Message.Content, nil
+	return out.Choices[0].Message.Content, nil
 }
 
+// HandleNLQuery handles incoming NL queries, uses client-side history management,
+// builds the LLM prompt (including schema), and executes or previews SQL.
 func HandleNLQuery(c *gin.Context) {
-	var req struct {
-		NLQuery   string `json:"nl_query"`
-		Confirmed bool   `json:"confirmed"`
-	}
+	// 1) Parse request with history
+	var req RequestBody
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return
-	}
-
-	sess := sessions.Default(c)
-	raw, _ := sess.Get("schema").(string)
-	var schema map[string][]string
-	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bad schema"})
-		return
-	}
-
-	prompt := buildPrompt(schema, req.NLQuery)
-	sqlCommand, err := connectLLM(prompt)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	fmt.Println(sqlCommand)
-	if needsConfirmation(sqlCommand) && !req.Confirmed {
-		c.JSON(http.StatusOK, gin.H{
-			"needs_confirmation": true,
-			"sql_preview":        sqlCommand,
+		c.JSON(http.StatusBadRequest, ResponseBody{
+			Error: "invalid JSON: " + err.Error(),
 		})
 		return
 	}
 
-	connStr, ok := sess.Get("connection_string").(string)
-	if !ok || connStr == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "no connection string in session"})
+	// 2) Load schema from session (still keep schema in session as it's not changing often)
+	sess := sessions.Default(c)
+	rawSchema, ok := sess.Get("schema").(string)
+	if !ok || rawSchema == "" {
+		c.JSON(http.StatusBadRequest, ResponseBody{
+			Error: "no schema in session; please re-select your database",
+		})
 		return
 	}
+
+	var schema map[string][]string
+	if err := json.Unmarshal([]byte(rawSchema), &schema); err != nil {
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error: "invalid schema: " + err.Error(),
+		})
+		return
+	}
+
+	// 3) Initialize history if empty
+	history := req.History
+	if len(history) == 0 {
+		history = []Message{
+			{Role: "system", Content: "You are a helpful assistant. Only output SQL."},
+		}
+	}
+
+	// 4) Build the full prompt (includes schema + user text)
+	userPrompt := buildPrompt(schema, req.NLQuery)
+
+	// Create a copy of history to work with
+	updatedHistory := append([]Message{}, history...)
+	updatedHistory = append(updatedHistory, Message{Role: "user", Content: userPrompt})
+
+	// 5) Call the LLM with the accumulated history
+	sqlCommand, err := connectLLM(updatedHistory)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error:   err.Error(),
+			History: history, // Return original history on error
+		})
+		return
+	}
+
+	// 6) If destructive SQL and not yet confirmed, ask for confirmation
+	if needsConfirmation(sqlCommand) && !req.Confirmed {
+		c.JSON(http.StatusOK, ResponseBody{
+			NeedsConfirmation: true,
+			SQLPreview:        sqlCommand,
+			History:           updatedHistory, // Return updated history with user's message
+		})
+		return
+	}
+
+	// 7) Append the assistant's SQL to history
+	updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
+
+	// 8) Load DB connection string and open database
+	connStr, ok := sess.Get("connection_string").(string)
+	if !ok || connStr == "" {
+		c.JSON(http.StatusBadRequest, ResponseBody{
+			Error:   "no database connection in session",
+			History: updatedHistory,
+		})
+		return
+	}
+
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("DB connect error: %v", err)})
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error:   fmt.Sprintf("DB connect error: %v", err),
+			History: updatedHistory,
+		})
 		return
 	}
 	defer db.Close()
 
+	// 9) Execute or query depending on SQL verb
 	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
 	if strings.HasPrefix(upper, "SELECT") {
 		rows, err := db.Query(sqlCommand)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("query error: %v", err)})
+			c.JSON(http.StatusInternalServerError, ResponseBody{
+				Error:   fmt.Sprintf("query error: %v", err),
+				History: updatedHistory,
+			})
 			return
 		}
 		defer rows.Close()
@@ -196,46 +243,49 @@ func HandleNLQuery(c *gin.Context) {
 		result := []map[string]interface{}{}
 
 		for rows.Next() {
-			// create a slice of interface{}'s to hold column values, and a second
-			// slice to contain pointers to each item in the values slice.
 			values := make([]interface{}, len(cols))
 			pointers := make([]interface{}, len(cols))
 			for i := range values {
 				pointers[i] = &values[i]
 			}
-
 			if err := rows.Scan(pointers...); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("scan error: %v", err)})
+				c.JSON(http.StatusInternalServerError, ResponseBody{
+					Error:   fmt.Sprintf("scan error: %v", err),
+					History: updatedHistory,
+				})
 				return
 			}
-
-			// build a map for this row, keyed by column name
-			rowMap := make(map[string]interface{})
+			rowMap := make(map[string]interface{}, len(cols))
 			for i, col := range cols {
 				rowMap[col] = values[i]
 			}
 			result = append(result, rowMap)
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status":      "ok",
-			"sql_preview": sqlCommand,
-			"table":       result,
+		c.JSON(http.StatusOK, ResponseBody{
+			Status:     "ok",
+			SQLPreview: sqlCommand,
+			Table:      result,
+			History:    updatedHistory,
 		})
 		return
 	}
 
-	// 7) non‑SELECT: execute and return a message
+	// 10) Non‑SELECT statements: Exec and report affected rows
 	res, err := db.Exec(sqlCommand)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("exec error: %v", err)})
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error:   fmt.Sprintf("exec error: %v", err),
+			History: updatedHistory,
+		})
 		return
 	}
 	affected, _ := res.RowsAffected()
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":      "ok",
-		"sql_preview": sqlCommand,
-		"message":     fmt.Sprintf("Query OK, %d rows affected", affected),
+	c.JSON(http.StatusOK, ResponseBody{
+		Status:     "ok",
+		SQLPreview: sqlCommand,
+		Message:    fmt.Sprintf("Query OK, %d rows affected", affected),
+		History:    updatedHistory,
 	})
 }

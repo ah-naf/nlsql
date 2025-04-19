@@ -6,6 +6,14 @@ function truncateText(text, maxLength = 30) {
 }
 
 $(function () {
+  // Initialize conversation history
+  let conversationHistory = [
+    {
+      role: "system",
+      content: "You are a helpful assistant. Only output SQL.",
+    },
+  ];
+
   // Make chat container responsive initially
   function adjustChatContainerHeight() {
     const windowHeight = $(window).height();
@@ -29,12 +37,12 @@ $(function () {
 
     // 2) append user bubble
     $("#chat-container").append(`
-          <div class="flex justify-end mb-4">
-            <div class="bg-blue-600 text-white px-4 py-2 rounded-lg shadow max-w-lg break-words">
-              ${nl}
+            <div class="flex justify-end mb-4">
+              <div class="bg-blue-600 text-white px-4 py-2 rounded-lg shadow max-w-lg break-words">
+                ${nl}
+              </div>
             </div>
-          </div>
-        `);
+          `);
     // scroll to bottom
     $("#chat-container").scrollTop($("#chat-container")[0].scrollHeight);
 
@@ -45,8 +53,19 @@ $(function () {
         url: "/query",
         method: "POST",
         contentType: "application/json",
-        data: JSON.stringify({ nl_query: nl, confirmed }),
+        data: JSON.stringify({
+          nl_query: nl,
+          confirmed: confirmed,
+          history: conversationHistory, // Send current history with each request
+        }),
         success: function (resp) {
+          console.log(resp);
+
+          // Update the conversation history from the response
+          if (resp.history && Array.isArray(resp.history)) {
+            conversationHistory = resp.history;
+          }
+
           // 3) confirmation flow
           if (resp.needs_confirmation) {
             $("#modal-sql").text(resp.sql_preview);
@@ -64,7 +83,7 @@ $(function () {
 
           // 4) build server bubble - constrained width
           let bubble = `<div class="flex justify-start mb-4">
-                          <div class="bg-white p-3 rounded-lg shadow max-w-full space-y-2">`;
+                            <div class="bg-white p-3 rounded-lg shadow max-w-full space-y-2">`;
 
           // 4a) SQL preview
           bubble += `<div class="font-mono text-xs text-gray-500 break-words">SQL: ${resp.sql_preview}</div>`;
@@ -89,11 +108,11 @@ $(function () {
 
             // Compact table with fixed layout
             bubble += `<div class="overflow-x-auto border border-gray-200 rounded-md shadow-sm">
-                         <table class="w-full text-sm table-fixed">`;
+                           <table class="w-full text-sm table-fixed">`;
 
             // header - make it sticky
             bubble += `<thead class="bg-gray-100 sticky top-0">
-                          <tr>`;
+                            <tr>`;
             cols.forEach((col) => {
               // Calculate appropriate column width based on content type
               let colWidth = "150px"; // default width
@@ -112,9 +131,9 @@ $(function () {
               else if (col.toLowerCase().includes("id")) colWidth = "80px";
 
               bubble += `<th class="px-2 py-1 text-left font-medium text-gray-600 uppercase tracking-wider" 
-                              style="width: ${colWidth}; max-width: ${colWidth};">
-                              ${col}
-                           </th>`;
+                                style="width: ${colWidth}; max-width: ${colWidth};">
+                                ${col}
+                             </th>`;
             });
             bubble += `</tr></thead>`;
 
@@ -133,27 +152,27 @@ $(function () {
                 const isTruncated = raw.length > maxLength;
 
                 bubble += `
-      <td class="px-2 py-1 text-gray-700 relative group">
-        <!-- single-line, truncated preview -->
-        <div class="truncate whitespace-nowrap">
-          ${truncated}
-        </div>
-        ${
-          isTruncated
-            ? `
-          <!-- full-text popover on hover -->
-          <div
-            class="absolute left-0 top-full mt-1 hidden group-hover:block
-                   bg-gray-800 text-white text-xs rounded p-2 z-20
-                   whitespace-normal break-words max-w-xs"
-          >
-            ${raw}
+        <td class="px-2 py-1 text-gray-700 relative group">
+          <!-- single-line, truncated preview -->
+          <div class="truncate whitespace-nowrap">
+            ${truncated}
           </div>
-        `
-            : ""
-        }
-      </td>
-    `;
+          ${
+            isTruncated
+              ? `
+            <!-- full-text popover on hover -->
+            <div
+              class="absolute left-0 top-full mt-1 hidden group-hover:block
+                     bg-gray-800 text-white text-xs rounded p-2 z-20
+                     whitespace-normal break-words max-w-xs"
+            >
+              ${raw}
+            </div>
+          `
+              : ""
+          }
+        </td>
+      `;
               });
 
               bubble += `</tr>`;
@@ -170,13 +189,21 @@ $(function () {
         error: function (xhr) {
           const msg = xhr.responseJSON?.error || xhr.statusText;
           $("#chat-container").append(`
-                <div class="flex justify-start mb-4">
-                  <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg shadow max-w-lg">
-                    ${msg}
+                  <div class="flex justify-start mb-4">
+                    <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg shadow max-w-lg">
+                      ${msg}
+                    </div>
                   </div>
-                </div>
-              `);
+                `);
           $("#chat-container").scrollTop($("#chat-container")[0].scrollHeight);
+
+          // If there's history in the error response, update our history
+          if (
+            xhr.responseJSON?.history &&
+            Array.isArray(xhr.responseJSON.history)
+          ) {
+            conversationHistory = xhr.responseJSON.history;
+          }
         },
       });
     }
@@ -185,4 +212,29 @@ $(function () {
     // clear input
     $("#nl_query").val("");
   });
+
+  // Optional: Add a button to clear history
+  if ($("#clear-history").length === 0) {
+    $("#query-form").after(`
+        <button id="clear-history" class="mt-2 text-sm text-gray-600 hover:text-gray-800">
+          Clear conversation history
+        </button>
+      `);
+
+    $("#clear-history").click(function () {
+      // Reset history to initial state
+      conversationHistory = [
+        {
+          role: "system",
+          content: "You are a helpful assistant. Only output SQL.",
+        },
+      ];
+
+      // Clear chat container except for the welcome message
+      $("#chat-container").empty();
+      $("#welcome-message").show();
+
+      alert("Conversation history cleared");
+    });
+  }
 });
