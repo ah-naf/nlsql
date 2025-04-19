@@ -240,9 +240,9 @@ $(function () {
           let bubble = `<div class="flex justify-start mb-4">
                             <div class="bg-white p-3 rounded-lg shadow max-w-full space-y-2">`;
 
-          // 4a) SQL preview
-          bubble += `<div class="font-mono text-xs text-gray-500 break-words">SQL: ${resp.sql_preview}</div>`;
-
+          bubble += `
+                <div class="bg-gray-100 border border-gray-300 p-3 rounded font-mono text-sm whitespace-pre-wrap mb-2">${resp.sql_preview}</div>
+              `;
           // 4b) error?
           if (resp.error) {
             bubble += `<div class="text-red-600 font-semibold">${resp.error}</div>`;
@@ -467,36 +467,7 @@ $(function () {
     });
   }
 
-  // Call this function after schema is loaded
   addSchemaControls();
 
-  // Add tooltips for column information (requires tooltip library)
-  function addColumnTooltips() {
-    $(".table-content li").each(function () {
-      const $column = $(this);
-      const columnName = $column.find(".font-medium").text();
-      const dataType = $column.find('[class*="text-xs px-2 py-1"]').text();
-
-      // Initialize tooltip with detailed information
-      $column.attr("title", `${columnName} (${dataType})`);
-
-      // If using a tooltip library like tippy.js:
-      // tippy($column[0], {
-      //   content: `<div class="p-2">
-      //     <div class="font-bold">${columnName}</div>
-      //     <div class="text-sm text-gray-500">${dataType}</div>
-      //   </div>`,
-      //   allowHTML: true
-      // });
-    });
-  }
-
-  // Add visual enhancements for foreign key relationships
-  function enhanceForeignKeyRelationships() {
-    // This would require knowledge of the actual relationships in your schema
-    // Placeholder for future enhancement
-  }
-
-  // Style additions to document
   $("<style>").text(schemaPanelCSS).appendTo("head");
 });
