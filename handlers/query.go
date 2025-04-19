@@ -74,10 +74,12 @@ func ShowQueryPage(c *gin.Context) {
 
 	schemaBytes, _ := json.Marshal(schema)
 	schemaJS := template.JS(schemaBytes)
+	dbName := sess.Get("dbname").(string)
 
 	c.HTML(http.StatusOK, "query.html", gin.H{
 		"Schema":     schema,
 		"SchemaJSON": schemaJS,
+		"DBName":     dbName,
 	})
 }
 

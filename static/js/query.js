@@ -6,7 +6,6 @@ function truncateText(text, maxLength = 30) {
 }
 
 function renderSchema(schema) {
-  console.log(schema);
   const $out = $(".schema-scroll").empty();
 
   if (!schema || Object.keys(schema).length === 0) {
@@ -14,7 +13,6 @@ function renderSchema(schema) {
           <div class="flex flex-col items-center justify-center py-12 text-gray-500">
             <i class="fas fa-database text-5xl mb-4 text-gray-400"></i>
             <p class="text-lg font-medium">No schema available</p>
-            <p class="text-sm mt-2">Connect to a database to view its structure</p>
           </div>
         `);
   }
@@ -210,8 +208,6 @@ $(function () {
           history: conversationHistory, // Send current history with each request
         }),
         success: function (resp) {
-          console.log(resp);
-
           if (resp.schema) {
             renderSchema(resp.schema);
           }
