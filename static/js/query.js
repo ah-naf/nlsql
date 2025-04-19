@@ -136,22 +136,42 @@ $(function () {
 
             // body - with truncated text
             bubble += `<tbody class="bg-white divide-y divide-gray-200">`;
+            const maxLength = 30;
+
             rows.forEach((row, rowIndex) => {
               bubble += `<tr class="${
                 rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"
               }">`;
-              cols.forEach((col) => {
-                let cellContent = row[col] === null ? "NULL" : String(row[col]);
-                let truncated = cellContent;
-                let title =
-                  cellContent !== truncated
-                    ? `title="${escapeHtml(cellContent)}"`
-                    : "";
 
-                bubble += `<td class="px-2 py-1 text-gray-700 whitespace-normal break-words" ${title}>
-                              ${escapeHtml(truncated)}
-                            </td>`;
+              cols.forEach((col) => {
+                const raw = row[col] == null ? "NULL" : String(row[col]);
+                const truncated = truncateText(raw, maxLength);
+                const isTruncated = raw.length > maxLength;
+
+                bubble += `
+      <td class="px-2 py-1 text-gray-700 relative group">
+        <!-- single-line, truncated preview -->
+        <div class="truncate whitespace-nowrap">
+          ${escapeHtml(truncated)}
+        </div>
+        ${
+          isTruncated
+            ? `
+          <!-- full-text popover on hover -->
+          <div
+            class="absolute left-0 top-full mt-1 hidden group-hover:block
+                   bg-gray-800 text-white text-xs rounded p-2 z-20
+                   whitespace-normal break-words max-w-xs"
+          >
+            ${escapeHtml(raw)}
+          </div>
+        `
+            : ""
+        }
+      </td>
+    `;
               });
+
               bubble += `</tr>`;
             });
             bubble += `</tbody></table></div>`;
