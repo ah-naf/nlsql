@@ -159,6 +159,7 @@ func SelectDB(c *gin.Context) {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, pass, selDB,
 	)
+	sess.Set("dbname", selDB)
 	sess.Set("connection_string", connStr)
 	sess.Save()
 
