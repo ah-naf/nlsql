@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -34,14 +35,14 @@ type RequestBody struct {
 }
 
 type ResponseBody struct {
-	Status            string                   `json:"status,omitempty"`
-	Error             string                   `json:"error,omitempty"`
-	NeedsConfirmation bool                     `json:"needs_confirmation,omitempty"`
-	SQLPreview        string                   `json:"sql_preview,omitempty"`
-	Table             []map[string]interface{} `json:"table,omitempty"`
-	Message           string                   `json:"message,omitempty"`
-	History           []Message                `json:"history,omitempty"`
-	Schema            map[string][]string      `json:"schema,omitempty"`
+	Status            string                         `json:"status,omitempty"`
+	Error             string                         `json:"error,omitempty"`
+	NeedsConfirmation bool                           `json:"needs_confirmation,omitempty"`
+	SQLPreview        string                         `json:"sql_preview,omitempty"`
+	Table             []map[string]interface{}       `json:"table,omitempty"`
+	Message           string                         `json:"message,omitempty"`
+	History           []Message                      `json:"history,omitempty"`
+	Schema            map[string][]models.ColumnInfo `json:"schema,omitempty"`
 }
 
 func needsConfirmation(sql string) bool {
@@ -71,23 +72,50 @@ func ShowQueryPage(c *gin.Context) {
 		return
 	}
 
+	schemaBytes, _ := json.Marshal(schema)
+	schemaJS := template.JS(schemaBytes)
+
 	c.HTML(http.StatusOK, "query.html", gin.H{
-		"Schema": schema,
+		"Schema":     schema,
+		"SchemaJSON": schemaJS,
 	})
 }
 
-func buildPrompt(schema map[string][]string, userText string) string {
+func buildPrompt(schema map[string][]models.ColumnInfo, userText string) string {
 	var parts []string
+
 	for table, cols := range schema {
-		parts = append(parts, fmt.Sprintf("%s(%s)", table, strings.Join(cols, ", ")))
+		// build column definitions with type (+ FK if any)
+		var colDefs []string
+		for _, c := range cols {
+			def := fmt.Sprintf("%s %s", c.Name, c.DataType)
+			if c.ForeignTable.Valid && c.ForeignColumn.Valid {
+				def = fmt.Sprintf(
+					"%s %s REFERENCES %s(%s)",
+					c.Name,
+					c.DataType,
+					c.ForeignTable.String,
+					c.ForeignColumn.String,
+				)
+			}
+			colDefs = append(colDefs, def)
+		}
+
+		// join columns and wrap in TableName(...)
+		parts = append(parts,
+			fmt.Sprintf("%s(%s)", table, strings.Join(colDefs, ", ")),
+		)
 	}
-	schemaDefs := strings.Join(parts, ", ")
+
+	schemaDefs := strings.Join(parts, "; ")
+
 	return fmt.Sprintf(
-		"Here are the table schemas: %s.\n"+
+		"Here are the table schemas, including data types and foreign keys: %s.\n"+
 			"Generate an SQL query for the following request:\n"+
 			"%s\n\n"+
 			"***Only output the SQL query, with no explanation or markdown formatting.***",
-		schemaDefs, userText,
+		schemaDefs,
+		userText,
 	)
 }
 

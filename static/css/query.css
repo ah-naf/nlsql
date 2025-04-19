@@ -144,3 +144,43 @@ td[title]:hover:after {
     transform: translateX(-100%);
   }
 }
+
+/* Initial state for card animation */
+/* Rotate the chevron icon on toggle */
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+
+
+/* Smooth transitions for hover effects */
+.transition-all {
+  transition: all 0.3s ease-in-out;
+}
+
+/* Custom scrollbar for the schema panel */
+.schema-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #a0aec0 #edf2f7;
+  position: relative;
+  z-index: 100;
+}
+
+.schema-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.schema-scroll::-webkit-scrollbar-track {
+  background: #edf2f7;
+  border-radius: 10px;
+}
+
+.schema-scroll::-webkit-scrollbar-thumb {
+  background: #a0aec0;
+  border-radius: 10px;
+}
+
+.schema-scroll::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
