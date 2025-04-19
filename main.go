@@ -18,6 +18,7 @@ func main() {
 
 	// Load templates
 	r.LoadHTMLGlob("templates/*.html")
+	r.Static("/static", "./static")
 
 	// Routes
 	r.GET("/", handlers.ShowConnectForm)
@@ -27,6 +28,7 @@ func main() {
 	r.GET("/reset", handlers.ResetSession)
 
 	r.GET("/query", handlers.ShowQueryPage)
+	r.POST("/query", handlers.HandleNLQuery)
 
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Server failed: %v", err)

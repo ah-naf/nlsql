@@ -177,6 +177,34 @@
         <!-- JS will append message bubbles and tables here -->
       </main>
 
+      <!-- Confirmation Modal -->
+      <div
+        id="confirm-modal"
+        class="fixed inset-0 hidden bg-black bg-opacity-50 flex items-center justify-center z-50"
+      >
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
+          <h2 class="text-xl font-semibold mb-4">Confirm SQL Execution</h2>
+          <pre
+            id="modal-sql"
+            class="bg-gray-100 rounded p-3 mb-4 overflow-auto text-sm"
+          ></pre>
+          <div class="flex justify-end space-x-2">
+            <button
+              id="modal-cancel"
+              class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              id="modal-confirm"
+              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Execute
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Input -->
       <footer class="p-4 bg-white shadow-inner">
         <form id="query-form" class="flex space-x-2">
@@ -260,5 +288,6 @@
           .trigger("resize");
       });
     </script>
+    <script src="/static/js/query.js"></script>
   </body>
 </html>
