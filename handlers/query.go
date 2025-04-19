@@ -22,6 +22,7 @@ import (
 var destructiveRE = regexp.MustCompile(`(?i)^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)`)
 
 const deepseekURL = "https://api.together.xyz/v1/chat/completions"
+const MODEL_NAME = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
 
 type Message struct {
 	Role    string `json:"role"`
@@ -132,7 +133,7 @@ func connectLLM(messages []Message) (string, error) {
 		Model    string    `json:"model"`
 		Messages []Message `json:"messages"`
 	}{
-		Model:    "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+		Model:    MODEL_NAME,
 		Messages: messages,
 	}
 
@@ -303,7 +304,6 @@ func HandleNLQuery(c *gin.Context) {
 		})
 		return
 	}
-	fmt.Println("schema temp", schemaTemp)
 
 	c.JSON(http.StatusOK, ResponseBody{
 		Status:     "ok",
