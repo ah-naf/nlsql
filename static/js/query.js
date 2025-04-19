@@ -1,13 +1,3 @@
-// Escape HTML to prevent XSS
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 // Truncate long text for table display
 function truncateText(text, maxLength = 30) {
   if (!text || typeof text !== "string") return text;
@@ -41,7 +31,7 @@ $(function () {
     $("#chat-container").append(`
           <div class="flex justify-end mb-4">
             <div class="bg-blue-600 text-white px-4 py-2 rounded-lg shadow max-w-lg break-words">
-              ${escapeHtml(nl)}
+              ${nl}
             </div>
           </div>
         `);
@@ -77,21 +67,15 @@ $(function () {
                           <div class="bg-white p-3 rounded-lg shadow max-w-full space-y-2">`;
 
           // 4a) SQL preview
-          bubble += `<div class="font-mono text-xs text-gray-500 break-words">SQL: ${escapeHtml(
-            resp.sql_preview
-          )}</div>`;
+          bubble += `<div class="font-mono text-xs text-gray-500 break-words">SQL: ${resp.sql_preview}</div>`;
 
           // 4b) error?
           if (resp.error) {
-            bubble += `<div class="text-red-600 font-semibold">${escapeHtml(
-              resp.error
-            )}</div>`;
+            bubble += `<div class="text-red-600 font-semibold">${resp.error}</div>`;
           }
           // 4c) simple message?
           else if (resp.message) {
-            bubble += `<div class="text-gray-800">${escapeHtml(
-              resp.message
-            )}</div>`;
+            bubble += `<div class="text-gray-800">${resp.message}</div>`;
           }
           // 4d) table result?
           else if (resp.table && resp.table.length) {
@@ -129,7 +113,7 @@ $(function () {
 
               bubble += `<th class="px-2 py-1 text-left font-medium text-gray-600 uppercase tracking-wider" 
                               style="width: ${colWidth}; max-width: ${colWidth};">
-                              ${escapeHtml(col)}
+                              ${col}
                            </th>`;
             });
             bubble += `</tr></thead>`;
@@ -152,7 +136,7 @@ $(function () {
       <td class="px-2 py-1 text-gray-700 relative group">
         <!-- single-line, truncated preview -->
         <div class="truncate whitespace-nowrap">
-          ${escapeHtml(truncated)}
+          ${truncated}
         </div>
         ${
           isTruncated
@@ -163,7 +147,7 @@ $(function () {
                    bg-gray-800 text-white text-xs rounded p-2 z-20
                    whitespace-normal break-words max-w-xs"
           >
-            ${escapeHtml(raw)}
+            ${raw}
           </div>
         `
             : ""
@@ -188,7 +172,7 @@ $(function () {
           $("#chat-container").append(`
                 <div class="flex justify-start mb-4">
                   <div class="bg-red-100 text-red-800 px-4 py-2 rounded-lg shadow max-w-lg">
-                    ${escapeHtml(msg)}
+                    ${msg}
                   </div>
                 </div>
               `);

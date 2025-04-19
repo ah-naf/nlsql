@@ -1,21 +1,45 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 var destructiveRE = regexp.MustCompile(`(?i)^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)`)
 
+const deepseekURL = "https://api.together.xyz/v1/chat/completions"
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type RequestBody struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+}
+
 func needsConfirmation(sql string) bool {
 	return destructiveRE.MatchString(strings.TrimSpace(sql))
+}
+
+func loadEnv() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 }
 
 func ShowQueryPage(c *gin.Context) {
@@ -53,6 +77,66 @@ func buildPrompt(schema map[string][]string, userText string) string {
 	)
 }
 
+func connectLLM(prompt string) (string, error) {
+	loadEnv()
+	token := os.Getenv("LLM_API_KEY")
+	if token == "" {
+		return "", fmt.Errorf("DeepSeek API key not found in environment")
+	}
+
+	reqBody := RequestBody{
+		Model: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+		Messages: []Message{
+			{Role: "user", Content: prompt},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		log.Fatalln(err)
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", deepseekURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Fatalln(err)
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalln(err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API error: %s", bodyBytes)
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Fatalln(err)
+		return "", err
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no response from LLM")
+	}
+
+	return result.Choices[0].Message.Content, nil
+}
+
 func HandleNLQuery(c *gin.Context) {
 	var req struct {
 		NLQuery   string `json:"nl_query"`
@@ -71,13 +155,18 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// sql := buildPrompt(schema, req.NLQuery)
-	sqlP := "SELECT * FROM users"
+	prompt := buildPrompt(schema, req.NLQuery)
+	sqlCommand, err := connectLLM(prompt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	if needsConfirmation(sqlP) && !req.Confirmed {
+	fmt.Println(sqlCommand)
+	if needsConfirmation(sqlCommand) && !req.Confirmed {
 		c.JSON(http.StatusOK, gin.H{
 			"needs_confirmation": true,
-			"sql_preview":        sqlP,
+			"sql_preview":        sqlCommand,
 		})
 		return
 	}
@@ -94,9 +183,9 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	defer db.Close()
 
-	upper := strings.ToUpper(strings.TrimSpace(sqlP))
+	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
 	if strings.HasPrefix(upper, "SELECT") {
-		rows, err := db.Query(sqlP)
+		rows, err := db.Query(sqlCommand)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("query error: %v", err)})
 			return
@@ -130,14 +219,14 @@ func HandleNLQuery(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":      "ok",
-			"sql_preview": sqlP,
+			"sql_preview": sqlCommand,
 			"table":       result,
 		})
 		return
 	}
 
 	// 7) non‑SELECT: execute and return a message
-	res, err := db.Exec(sqlP)
+	res, err := db.Exec(sqlCommand)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("exec error: %v", err)})
 		return
@@ -146,7 +235,7 @@ func HandleNLQuery(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":      "ok",
-		"sql_preview": sqlP,
+		"sql_preview": sqlCommand,
 		"message":     fmt.Sprintf("Query OK, %d rows affected", affected),
 	})
 }
