@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -24,12 +25,65 @@ func ShowConnectForm(c *gin.Context) {
 	sess.Save()
 }
 
+func CreateDB(c *gin.Context) {
+	sess := sessions.Default(c)
+	host := sess.Get("host").(string)
+	port := sess.Get("port").(string)
+	user := sess.Get("user").(string)
+	pass := sess.Get("pass").(string)
+
+	newDB := c.PostForm("newdb")
+	if newDB == "" {
+		sess.Set("create_error", "Database name cannot be blank")
+		sess.Save()
+		c.Redirect(http.StatusSeeOther, "/select")
+		return
+	}
+
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
+		host, port, user, pass,
+	)
+
+	db, err := sql.Open("postgres", connStr)
+	if err == nil {
+		err = db.Ping()
+	}
+	if err != nil {
+		sess.Set("create_error", fmt.Sprintf("Connection error: %v", err))
+		sess.Save()
+		c.Redirect(http.StatusSeeOther, "/select")
+		return
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(fmt.Sprintf("CREATE DATABASE %s;", pq.QuoteIdentifier(newDB))); err != nil {
+		sess.Set("create_error", fmt.Sprintf("Could not create database: %v", err))
+		sess.Save()
+		c.Redirect(http.StatusSeeOther, "/select")
+		return
+	}
+
+	selConn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, pass, newDB,
+	)
+	sess.Set("connection_string", selConn)
+	sess.Save()
+
+	c.Redirect(http.StatusSeeOther, "/query")
+}
+
 func ConnectDB(c *gin.Context) {
 	host := c.PostForm("host")
 	port := c.PostForm("port")
 	user := c.PostForm("user")
 	pass := c.PostForm("pass")
 	dbname := c.PostForm("dbname")
+
+	if dbname == "" {
+		dbname = "postgres"
+	}
 
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",

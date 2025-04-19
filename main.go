@@ -30,6 +30,8 @@ func main() {
 	r.GET("/query", handlers.ShowQueryPage)
 	r.POST("/query", handlers.HandleNLQuery)
 
+	r.POST("/createdb", handlers.CreateDB)
+
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
