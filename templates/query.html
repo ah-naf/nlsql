@@ -14,12 +14,23 @@
       href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
     />
     <link rel="stylesheet" href="/static/css/query.css" />
+    <style>
+      #main-content.with-sidebar {
+        width: calc(100% - 16rem);
+      }
+
+      @media (max-width: 1024px) {
+        #main-content.with-sidebar {
+          width: 100%;
+        }
+      }
+    </style>
   </head>
   <body class="bg-gray-50 h-screen flex overflow-hidden font-sans">
     <!-- Schema Sidebar -->
     <aside
       id="schema-panel"
-      class="w-64 bg-white relative shadow-lg transition-all duration-300 transform border-r border-gray-200 overflow-y-auto"
+      class="bg-white shadow-lg border-r border-gray-200 overflow-y-auto transition-all duration-300 w-64"
       style="min-width: 16rem"
     >
       <div class="schema-content">
@@ -67,7 +78,7 @@
     </aside>
 
     <!-- Main Chat Area -->
-    <div id="main-content" class="flex-1 flex flex-col">
+    <div id="main-content" class="flex-grow flex flex-col with-sidebar">
       <!-- Header -->
       <header class="bg-white shadow-sm p-4 flex justify-between items-center">
         <div class="flex items-center">
@@ -81,7 +92,6 @@
         </div>
 
         <div class="flex space-x-2">
-          <!-- Desktop Schema toggle -->
           <button
             id="schema-button-desktop"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm hidden lg:flex items-center"
@@ -90,7 +100,6 @@
             <span id="schema-text">Schema</span>
           </button>
 
-          <!-- Change DB link -->
           <a
             href="/select"
             class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 shadow-sm flex items-center"
@@ -106,7 +115,6 @@
         id="chat-container"
         class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100"
       >
-        <!-- Welcome message -->
         <div id="welcome-message" class="flex justify-start mb-6">
           <div
             class="max-w-lg px-5 py-4 rounded-lg bg-white text-gray-800 shadow"
@@ -119,23 +127,18 @@
           </div>
         </div>
 
-        <!-- Response UI -->
         <div id="response-container">
-          <!-- SQL Preview -->
           <div id="sql-preview" class="font-mono text-sm text-gray-700"></div>
-          <!-- Error -->
           <div
             id="error-message"
             class="text-red-600 font-semibold"
             style="display: none"
           ></div>
-          <!-- Success Message -->
           <div
             id="result-message"
             class="text-green-700 font-semibold"
             style="display: none"
           ></div>
-          <!-- DataTable -->
           <table
             id="result-table"
             class="display stripe hover w-full"
@@ -207,24 +210,25 @@
         var $schemaBtnDesktop = $("#schema-button-desktop");
         var $schemaIcon = $("#schema-icon");
         var $schemaText = $("#schema-text");
+        var $mainContent = $("#main-content");
         var schemaVisible = true;
 
         function toggleSchema() {
           if ($(window).width() < 1024) {
-            // Mobile: completely show/hide
             $schemaPanel
               .toggleClass("hidden")
               .toggleClass("fixed left-0 top-0 h-full z-50");
           } else {
-            // Desktop: collapse width
             if (schemaVisible) {
               $schemaPanel.addClass("sidebar-collapsed");
               $schemaIcon.removeClass("fa-database").addClass("fa-bars");
               $schemaText.text("Show Schema");
+              $mainContent.removeClass("with-sidebar");
             } else {
               $schemaPanel.removeClass("sidebar-collapsed");
               $schemaIcon.removeClass("fa-bars").addClass("fa-database");
               $schemaText.text("Schema");
+              $mainContent.addClass("with-sidebar");
             }
             schemaVisible = !schemaVisible;
           }
@@ -234,7 +238,6 @@
         $schemaBtnDesktop.on("click", toggleSchema);
         $("#toggle-schema").on("click", toggleSchema);
 
-        // Collapsible tables
         $(".table-header").each(function () {
           $(this).on("click", function () {
             var $content = $(this).next(".table-content");
@@ -244,18 +247,20 @@
           });
         });
 
-        // Responsive on resize
         $(window)
           .on("resize", function () {
             if ($(window).width() >= 1024) {
               $schemaPanel.removeClass("hidden fixed left-0 top-0 h-full z-50");
               if (!schemaVisible) {
                 $schemaPanel.addClass("sidebar-collapsed");
+                $mainContent.removeClass("with-sidebar");
               } else {
                 $schemaPanel.removeClass("sidebar-collapsed");
+                $mainContent.addClass("with-sidebar");
               }
             } else {
               $schemaPanel.removeClass("sidebar-collapsed").addClass("hidden");
+              $mainContent.removeClass("with-sidebar");
             }
           })
           .trigger("resize");

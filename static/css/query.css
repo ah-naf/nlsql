@@ -12,25 +12,18 @@
   animation: fadeIn 0.3s ease-out forwards;
 }
 
-/* Hide scrollbar when sidebar is collapsed */
+#schema-panel {
+  transition: all 0.3s ease;
+}
+
 .sidebar-collapsed {
   width: 0 !important;
   min-width: 0 !important;
-  overflow: hidden;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
-}
-
-/* Fix for schema panel content */
-.schema-content {
-  opacity: 1;
-  transition: opacity 0.2s ease-out;
+  overflow: hidden !important;
 }
 
 .sidebar-collapsed .schema-content {
-  opacity: 0;
-  visibility: hidden;
+  display: none !important;
 }
 
 .rotate-icon {
@@ -68,10 +61,10 @@
 
 /* Make the main content area fully responsive */
 #main-content {
-  width: 100%;
-  max-width: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 /* Ensure footer stays at bottom */
@@ -107,9 +100,11 @@ th {
 
 /* Fix chat container width */
 #chat-container {
+  flex: 1;
   width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 1rem;
+  scroll-behavior: smooth;
 }
 
 /* Style for hover tooltips */
@@ -134,4 +129,18 @@ td[title]:hover:after {
   word-break: break-all;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  #schema-panel {
+    position: absolute;
+    z-index: 40;
+    height: 100%;
+    background: white;
+    border-right: 1px solid #ddd;
+  }
+
+  .sidebar-collapsed {
+    transform: translateX(-100%);
+  }
 }
