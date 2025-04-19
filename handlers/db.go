@@ -118,13 +118,14 @@ func SelectDB(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Schema error: %v", err))
 		return
 	}
-	
+
 	b, err := json.Marshal(schema)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "schema marshal error: %v", err)
 		return
 	}
 	sess.Set("schema", string(b))
+	sess.Set("connection_string", connStr)
 	sess.Save()
 
 	c.Redirect(http.StatusSeeOther, "/query")

@@ -1,0 +1,137 @@
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Hide scrollbar when sidebar is collapsed */
+.sidebar-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* Fix for schema panel content */
+.schema-content {
+  opacity: 1;
+  transition: opacity 0.2s ease-out;
+}
+
+.sidebar-collapsed .schema-content {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.rotate-icon {
+  transition: transform 0.3s ease;
+}
+
+.rotate-icon.down {
+  transform: rotate(90deg);
+}
+
+.w-95 {
+  width: 95%;
+}
+
+#chat-container {
+  height: calc(100vh - 130px); /* Fallback if JS fails */
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 1rem;
+}
+
+/* Better table display on small screens */
+@media (max-width: 640px) {
+  .table-sm-scroll {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  #schema-panel {
+    width: 85vw !important;
+    min-width: unset !important;
+  }
+}
+
+/* Make the main content area fully responsive */
+#main-content {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure footer stays at bottom */
+footer {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  background-color: white;
+  z-index: 10;
+}
+
+/* Add these to your style section */
+
+/* Fix table display */
+table.table-fixed {
+  table-layout: fixed;
+}
+
+/* Force cell truncation */
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Ensure proper cell height */
+td,
+th {
+  height: auto;
+  max-height: 50px;
+}
+
+/* Fix chat container width */
+#chat-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Style for hover tooltips */
+td[title]:hover {
+  position: relative;
+}
+
+td[title]:hover:after {
+  content: attr(title);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 20;
+  background: #f9f9f9;
+  color: #000;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 5px 8px;
+  width: auto;
+  max-width: 300px;
+  white-space: normal;
+  word-break: break-all;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+}

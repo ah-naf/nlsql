@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,13 +71,82 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	sql := buildPrompt(schema, req.NLQuery)
+	// sql := buildPrompt(schema, req.NLQuery)
+	sqlP := "SELECT * FROM users"
 
-	if needsConfirmation(sql) && !req.Confirmed {
+	if needsConfirmation(sqlP) && !req.Confirmed {
 		c.JSON(http.StatusOK, gin.H{
 			"needs_confirmation": true,
-			"sql_preview":        sql,
+			"sql_preview":        sqlP,
 		})
 		return
 	}
+
+	connStr, ok := sess.Get("connection_string").(string)
+	if !ok || connStr == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no connection string in session"})
+		return
+	}
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("DB connect error: %v", err)})
+		return
+	}
+	defer db.Close()
+
+	upper := strings.ToUpper(strings.TrimSpace(sqlP))
+	if strings.HasPrefix(upper, "SELECT") {
+		rows, err := db.Query(sqlP)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("query error: %v", err)})
+			return
+		}
+		defer rows.Close()
+
+		cols, _ := rows.Columns()
+		result := []map[string]interface{}{}
+
+		for rows.Next() {
+			// create a slice of interface{}'s to hold column values, and a second
+			// slice to contain pointers to each item in the values slice.
+			values := make([]interface{}, len(cols))
+			pointers := make([]interface{}, len(cols))
+			for i := range values {
+				pointers[i] = &values[i]
+			}
+
+			if err := rows.Scan(pointers...); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("scan error: %v", err)})
+				return
+			}
+
+			// build a map for this row, keyed by column name
+			rowMap := make(map[string]interface{})
+			for i, col := range cols {
+				rowMap[col] = values[i]
+			}
+			result = append(result, rowMap)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":      "ok",
+			"sql_preview": sqlP,
+			"table":       result,
+		})
+		return
+	}
+
+	// 7) non‑SELECT: execute and return a message
+	res, err := db.Exec(sqlP)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("exec error: %v", err)})
+		return
+	}
+	affected, _ := res.RowsAffected()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "ok",
+		"sql_preview": sqlP,
+		"message":     fmt.Sprintf("Query OK, %d rows affected", affected),
+	})
 }
