@@ -102,7 +102,7 @@ func connectLLM(messages []Message) (string, error) {
 		Model    string    `json:"model"`
 		Messages []Message `json:"messages"`
 	}{
-		Model:    "meta-llama/Llama-Vision-Free",
+		Model:    "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
 		Messages: messages,
 	}
 
@@ -199,6 +199,7 @@ func HandleNLQuery(c *gin.Context) {
 	}
 
 	if needsConfirmation(sqlCommand) && !req.Confirmed {
+		updatedHistory = updatedHistory[:len(updatedHistory)-1]
 		c.JSON(http.StatusOK, ResponseBody{
 			NeedsConfirmation: true,
 			SQLPreview:        sqlCommand,
@@ -207,6 +208,7 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
+	updatedHistory = updatedHistory[:len(updatedHistory)-1]
 	updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
 
 	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
