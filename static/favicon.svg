@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Chat bubble -->
+  <path
+    d="M8 4 h48 a4 4 0 0 1 4 4 v32 a4 4 0 0 1 -4 4 h-20 l-8 8 l-8 -8 h-12 a4 4 0 0 1 -4 -4 V8 a4 4 0 0 1 4 -4 Z"
+    fill="#4F46E5"
+  />
+  <!-- Code brackets -->
+  <path
+    d="M26 24 l-6 8 6 8"
+    stroke="#FFFFFF"
+    stroke-width="4"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M38 24 l6 8 -6 8"
+    stroke="#FFFFFF"
+    stroke-width="4"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
