@@ -56,7 +56,7 @@
               </div>
               <i class="fas fa-chevron-right text-gray-400 rotate-icon"></i>
             </h3>
-            <ul class="space-y-1 text-gray-600 table-content">
+            <ul class="space-y-1 text-gray-600 hidden table-content">
               {{ range $cols }}
               <li class="flex items-center py-1 border-b border-gray-100">
                 <span class="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
@@ -238,13 +238,11 @@
         $schemaBtnDesktop.on("click", toggleSchema);
         $("#toggle-schema").on("click", toggleSchema);
 
-        $(".table-header").each(function () {
-          $(this).on("click", function () {
-            var $content = $(this).next(".table-content");
-            var $icon = $(this).find(".rotate-icon");
-            $content.toggleClass("expanded");
-            $icon.toggleClass("down");
-          });
+        $(document).on("click", ".table-header", function () {
+          const $content = $(this).next(".table-content");
+          const $icon = $(this).find(".rotate-icon");
+          $content.slideToggle(150); // Optional animation
+          $icon.toggleClass("down");
         });
 
         $(window)
