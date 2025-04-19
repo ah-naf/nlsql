@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"nlsql/models"
@@ -106,25 +105,6 @@ func SelectDB(c *gin.Context) {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, pass, selDB,
 	)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("DB connect error: %v", err))
-		return
-	}
-	defer db.Close()
-
-	schema, err := models.GetSchema(db)
-	if err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("Schema error: %v", err))
-		return
-	}
-
-	b, err := json.Marshal(schema)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "schema marshal error: %v", err)
-		return
-	}
-	sess.Set("schema", string(b))
 	sess.Set("connection_string", connStr)
 	sess.Save()
 

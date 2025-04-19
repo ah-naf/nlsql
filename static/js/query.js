@@ -34,15 +34,15 @@ function renderSchema(schema) {
   });
 
   // re‑bind the expand/collapse click handler
-  $out
-    .find(".table-header")
-    .off("click")
-    .on("click", function () {
-      const $content = $(this).next(".table-content");
-      const $icon = $(this).find(".rotate-icon");
-      $content.slideToggle(150);
-      $icon.toggleClass("down");
-    });
+  //   $out
+  //     .find(".table-header")
+  //     .off("click")
+  //     .on("click", function () {
+  //       const $content = $(this).next(".table-content");
+  //       const $icon = $(this).find(".rotate-icon");
+  //       $content.slideToggle(150);
+  //       $icon.toggleClass("down");
+  //     });
 }
 
 $(function () {

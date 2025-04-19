@@ -102,7 +102,7 @@ func connectLLM(messages []Message) (string, error) {
 		Model    string    `json:"model"`
 		Messages []Message `json:"messages"`
 	}{
-		Model:    "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+		Model:    "meta-llama/Llama-Vision-Free",
 		Messages: messages,
 	}
 
@@ -141,10 +141,7 @@ func connectLLM(messages []Message) (string, error) {
 	return out.Choices[0].Message.Content, nil
 }
 
-// HandleNLQuery handles incoming NL queries, uses client-side history management,
-// builds the LLM prompt (including schema), and executes or previews SQL.
 func HandleNLQuery(c *gin.Context) {
-	// 1) Parse request with history
 	var req RequestBody
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ResponseBody{
@@ -153,17 +150,8 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// 2) Load schema from session (still keep schema in session as it's not changing often)
 	sess := sessions.Default(c)
-	rawSchema, ok := sess.Get("schema").(string)
-	if !ok || rawSchema == "" {
-		c.JSON(http.StatusBadRequest, ResponseBody{
-			Error: "no schema in session; please re-select your database",
-		})
-		return
-	}
 
-	// 3) Initialize history if empty
 	history := req.History
 	if len(history) == 0 {
 		history = []Message{
@@ -196,14 +184,11 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// 4) Build the full prompt (includes schema + user text)
 	userPrompt := buildPrompt(schema, req.NLQuery)
 
-	// Create a copy of history to work with
 	updatedHistory := append([]Message{}, history...)
 	updatedHistory = append(updatedHistory, Message{Role: "user", Content: userPrompt})
 
-	// 5) Call the LLM with the accumulated history
 	sqlCommand, err := connectLLM(updatedHistory)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ResponseBody{
@@ -213,7 +198,6 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// 6) If destructive SQL and not yet confirmed, ask for confirmation
 	if needsConfirmation(sqlCommand) && !req.Confirmed {
 		c.JSON(http.StatusOK, ResponseBody{
 			NeedsConfirmation: true,
@@ -223,10 +207,8 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// 7) Append the assistant's SQL to history
 	updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
 
-	// 9) Execute or query depending on SQL verb
 	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
 	if strings.HasPrefix(upper, "SELECT") {
 		rows, err := db.Query(sqlCommand)
@@ -271,7 +253,6 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// 10) Non‑SELECT statements: Exec and report affected rows
 	res, err := db.Exec(sqlCommand)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ResponseBody{
