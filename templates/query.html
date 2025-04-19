@@ -8,6 +8,7 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
       rel="stylesheet"
     />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
       @keyframes fadeIn {
         from {
@@ -134,13 +135,26 @@
           </button>
           <h1 class="text-2xl font-bold text-gray-800">NL → SQL Chat</h1>
         </div>
-        <button
-          id="schema-button-desktop"
-          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm flex items-center hidden lg:flex"
-        >
-          <i id="schema-icon" class="fas fa-database mr-2"></i>
-          <span id="schema-text">Schema</span>
-        </button>
+
+        <div class="flex space-x-2">
+          <!-- Desktop Schema toggle -->
+          <button
+            id="schema-button-desktop"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm hidden lg:flex items-center"
+          >
+            <i id="schema-icon" class="fas fa-database mr-2"></i>
+            <span id="schema-text">Schema</span>
+          </button>
+
+          <!-- Change DB link -->
+          <a
+            href="/select"
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 shadow-sm flex items-center"
+          >
+            <i class="fas fa-exchange-alt mr-2"></i>
+            Change DB
+          </a>
+        </div>
       </header>
 
       <!-- Messages -->
@@ -186,102 +200,65 @@
     </div>
 
     <script>
-      const schemaPanel = document.getElementById("schema-panel");
-      const mainContent = document.getElementById("main-content");
-      const schemaBtnMobile = document.getElementById("schema-button");
-      const schemaBtnDesktop = document.getElementById("schema-button-desktop");
-      const schemaIcon = document.getElementById("schema-icon");
-      const schemaText = document.getElementById("schema-text");
-      const toggleBtn = document.getElementById("toggle-schema");
-      let schemaPanelVisible = true;
+      $(function () {
+        var $schemaPanel = $("#schema-panel");
+        var $schemaBtnMobile = $("#schema-button");
+        var $schemaBtnDesktop = $("#schema-button-desktop");
+        var $schemaIcon = $("#schema-icon");
+        var $schemaText = $("#schema-text");
+        var schemaVisible = true;
 
-      function toggleSchema() {
-        if (window.innerWidth < 1024) {
-          // Mobile view - show/hide completely
-          if (schemaPanel.classList.contains("hidden")) {
-            schemaPanel.classList.remove("hidden");
-            schemaPanel.classList.add(
-              "fixed",
-              "left-0",
-              "top-0",
-              "h-full",
-              "z-50"
-            );
-            schemaPanel.classList.remove("sidebar-collapsed");
+        function toggleSchema() {
+          if ($(window).width() < 1024) {
+            // Mobile: completely show/hide
+            $schemaPanel
+              .toggleClass("hidden")
+              .toggleClass("fixed left-0 top-0 h-full z-50");
           } else {
-            schemaPanel.classList.add("hidden");
-            schemaPanel.classList.remove(
-              "fixed",
-              "left-0",
-              "top-0",
-              "h-full",
-              "z-50"
-            );
-          }
-        } else {
-          if (schemaPanelVisible) {
-            schemaPanel.classList.add("sidebar-collapsed");
-            schemaIcon.classList.remove("fa-database");
-            schemaIcon.classList.add("fa-bars");
-            schemaText.textContent = "Show Schema";
-            schemaPanelVisible = false;
-          } else {
-            schemaPanel.classList.remove("sidebar-collapsed");
-            schemaIcon.classList.add("fa-database");
-            schemaIcon.classList.remove("fa-bars");
-            schemaText.textContent = "Schema";
-            schemaPanelVisible = true;
+            // Desktop: collapse width
+            if (schemaVisible) {
+              $schemaPanel.addClass("sidebar-collapsed");
+              $schemaIcon.removeClass("fa-database").addClass("fa-bars");
+              $schemaText.text("Show Schema");
+            } else {
+              $schemaPanel.removeClass("sidebar-collapsed");
+              $schemaIcon.removeClass("fa-bars").addClass("fa-database");
+              $schemaText.text("Schema");
+            }
+            schemaVisible = !schemaVisible;
           }
         }
-      }
 
-      schemaBtnMobile.addEventListener("click", toggleSchema);
-      schemaBtnDesktop.addEventListener("click", toggleSchema);
-      toggleBtn.addEventListener("click", toggleSchema);
+        $schemaBtnMobile.on("click", toggleSchema);
+        $schemaBtnDesktop.on("click", toggleSchema);
+        $("#toggle-schema").on("click", toggleSchema);
 
-      function setupCollapsibleTables() {
-        const tableHeaders = document.querySelectorAll(".table-header");
-
-        tableHeaders.forEach((header) => {
-          header.addEventListener("click", () => {
-            const content = header.nextElementSibling;
-            const icon = header.querySelector(".rotate-icon");
-
-            content.classList.toggle("expanded");
-
-            icon.classList.toggle("down");
+        // Collapsible tables
+        $(".table-header").each(function () {
+          $(this).on("click", function () {
+            var $content = $(this).next(".table-content");
+            var $icon = $(this).find(".rotate-icon");
+            $content.toggleClass("expanded");
+            $icon.toggleClass("down");
           });
         });
-      }
 
-      document.addEventListener("DOMContentLoaded", setupCollapsibleTables);
-
-      // Responsive behavior
-      function handleResize() {
-        if (window.innerWidth >= 1024) {
-          // Desktop view
-          schemaPanel.classList.remove(
-            "hidden",
-            "fixed",
-            "left-0",
-            "top-0",
-            "h-full",
-            "z-50"
-          );
-          if (!schemaPanelVisible) {
-            schemaPanel.classList.add("sidebar-collapsed");
-          } else {
-            schemaPanel.classList.remove("sidebar-collapsed");
-          }
-        } else {
-          // Mobile view
-          schemaPanel.classList.remove("sidebar-collapsed");
-          schemaPanel.classList.add("hidden");
-        }
-      }
-
-      window.addEventListener("resize", handleResize);
-      handleResize(); // Initialize on page load
+        // Responsive on resize
+        $(window)
+          .on("resize", function () {
+            if ($(window).width() >= 1024) {
+              $schemaPanel.removeClass("hidden fixed left-0 top-0 h-full z-50");
+              if (!schemaVisible) {
+                $schemaPanel.addClass("sidebar-collapsed");
+              } else {
+                $schemaPanel.removeClass("sidebar-collapsed");
+              }
+            } else {
+              $schemaPanel.removeClass("sidebar-collapsed").addClass("hidden");
+            }
+          })
+          .trigger("resize");
+      });
     </script>
   </body>
 </html>
