@@ -5,6 +5,46 @@ function truncateText(text, maxLength = 30) {
   return text.substring(0, maxLength) + "...";
 }
 
+function renderSchema(schema) {
+  const $out = $("#schema-panel .schema-scroll").empty();
+  Object.entries(schema).forEach(([table, cols]) => {
+    const $tableCard = $(`
+        <div class="mb-6 bg-gray-50 rounded-lg p-3 shadow schema-table">
+          <h3 class="font-semibold text-gray-800 mb-2 flex items-center justify-between table-header">
+            <div class="flex items-center">
+              <i class="fas fa-table mr-2 text-blue-500"></i>${table}
+            </div>
+            <i class="fas fa-chevron-right text-gray-400 rotate-icon"></i>
+          </h3>
+          <ul class="space-y-1 text-gray-600 hidden table-content">
+            ${cols
+              .map(
+                (c) => `
+              <li class="flex items-center py-1 border-b border-gray-100">
+                <span class="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
+                ${c}
+              </li>
+            `
+              )
+              .join("")}
+          </ul>
+        </div>
+      `);
+    $out.append($tableCard);
+  });
+
+  // re‑bind the expand/collapse click handler
+  $out
+    .find(".table-header")
+    .off("click")
+    .on("click", function () {
+      const $content = $(this).next(".table-content");
+      const $icon = $(this).find(".rotate-icon");
+      $content.slideToggle(150);
+      $icon.toggleClass("down");
+    });
+}
+
 $(function () {
   // Initialize conversation history
   let conversationHistory = [
@@ -60,6 +100,10 @@ $(function () {
         }),
         success: function (resp) {
           console.log(resp);
+
+          if (resp.schema) {
+            renderSchema(resp.schema);
+          }
 
           // Update the conversation history from the response
           if (resp.history && Array.isArray(resp.history)) {

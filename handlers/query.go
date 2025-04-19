@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"nlsql/models"
 	"os"
 	"regexp"
 	"strings"
@@ -40,6 +41,7 @@ type ResponseBody struct {
 	Table             []map[string]interface{} `json:"table,omitempty"`
 	Message           string                   `json:"message,omitempty"`
 	History           []Message                `json:"history,omitempty"`
+	Schema            map[string][]string      `json:"schema,omitempty"`
 }
 
 func needsConfirmation(sql string) bool {
@@ -56,15 +58,16 @@ func loadEnv() {
 func ShowQueryPage(c *gin.Context) {
 	sess := sessions.Default(c)
 
-	raw, ok := sess.Get("schema").(string)
-	if !ok || raw == "" {
-		c.String(http.StatusBadRequest, "no schema in session; please re‑select your database")
+	connStr := sess.Get("connection_string").(string)
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	var schema map[string][]string
-	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("failed to parse schema from session: %v", err))
+	schema, err := models.GetSchema(db)
+	if err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -160,20 +163,37 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	var schema map[string][]string
-	if err := json.Unmarshal([]byte(rawSchema), &schema); err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error: "invalid schema: " + err.Error(),
-		})
-		return
-	}
-
 	// 3) Initialize history if empty
 	history := req.History
 	if len(history) == 0 {
 		history = []Message{
 			{Role: "system", Content: "You are a helpful assistant. Only output SQL."},
 		}
+	}
+
+	connStr, ok := sess.Get("connection_string").(string)
+	if !ok || connStr == "" {
+		c.JSON(http.StatusBadRequest, ResponseBody{
+			Error: "no database connection in session",
+		})
+		return
+	}
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error: fmt.Sprintf("DB connect error: %v", err),
+		})
+		return
+	}
+	defer db.Close()
+
+	schema, err := models.GetSchema(db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error: fmt.Sprintf("Schema fetch error: %v", err),
+		})
+		return
 	}
 
 	// 4) Build the full prompt (includes schema + user text)
@@ -205,26 +225,6 @@ func HandleNLQuery(c *gin.Context) {
 
 	// 7) Append the assistant's SQL to history
 	updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
-
-	// 8) Load DB connection string and open database
-	connStr, ok := sess.Get("connection_string").(string)
-	if !ok || connStr == "" {
-		c.JSON(http.StatusBadRequest, ResponseBody{
-			Error:   "no database connection in session",
-			History: updatedHistory,
-		})
-		return
-	}
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error:   fmt.Sprintf("DB connect error: %v", err),
-			History: updatedHistory,
-		})
-		return
-	}
-	defer db.Close()
 
 	// 9) Execute or query depending on SQL verb
 	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
@@ -282,10 +282,21 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	affected, _ := res.RowsAffected()
 
+	schemaTemp, err := models.GetSchema(db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ResponseBody{
+			Error:   fmt.Sprintf("schema refresh error: %v", err),
+			History: updatedHistory,
+		})
+		return
+	}
+	fmt.Println("schema temp", schemaTemp)
+
 	c.JSON(http.StatusOK, ResponseBody{
 		Status:     "ok",
 		SQLPreview: sqlCommand,
 		Message:    fmt.Sprintf("Query OK, %d rows affected", affected),
 		History:    updatedHistory,
+		Schema:     schemaTemp,
 	})
 }
