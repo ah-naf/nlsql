@@ -33,7 +33,7 @@ func DeleteDB(c *gin.Context) {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
+		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		req.Host, req.Port, req.User, req.Pass,
 	)
 
@@ -81,7 +81,7 @@ func CreateDB(c *gin.Context) {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
+		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		req.Host, req.Port, req.User, req.Pass,
 	)
 
