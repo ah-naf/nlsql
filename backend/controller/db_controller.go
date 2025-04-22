@@ -14,10 +14,51 @@ import (
 
 type DBRequest struct {
 	Host   string `json:"host"`
-	Port   int    `json:"port"`
+	Port   string `json:"port"`
 	User   string `json:"user"`
 	Pass   string `json:"pass"`
 	DBName string `json:"dbname"`
+}
+
+func GetDatabases(c *gin.Context) {
+	req := DBRequest{
+		Host:   c.Query("host"),
+		Port:   c.Query("port"),
+		User:   c.Query("user"),
+		Pass:   c.Query("pass"),
+		DBName: c.Query("dbname"),
+	}
+
+	if req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required query parameters"})
+		return
+	}
+
+	if req.DBName == "" {
+		req.DBName = "postgres"
+	}
+
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		req.Host, req.Port, req.User, req.Pass, req.DBName,
+	)
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Connection error: " + err.Error()})
+		return
+	}
+	defer db.Close()
+
+	dbs, err := models.GetDatabases(db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get databases: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"databases": dbs,
+	})
 }
 
 func DeleteDB(c *gin.Context) {
@@ -33,7 +74,7 @@ func DeleteDB(c *gin.Context) {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
+		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
 		req.Host, req.Port, req.User, req.Pass,
 	)
 
@@ -81,7 +122,7 @@ func CreateDB(c *gin.Context) {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
+		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
 		req.Host, req.Port, req.User, req.Pass,
 	)
 
@@ -121,10 +162,9 @@ func ConnectDB(c *gin.Context) {
 	}
 
 	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		req.Host, req.Port, req.User, req.Pass, req.DBName,
 	)
-	fmt.Println("DB Conn:", connStr)
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {

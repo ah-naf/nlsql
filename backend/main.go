@@ -24,6 +24,7 @@ func main() {
 	r.POST("/connect", controller.ConnectDB)
 	r.POST("/create", controller.CreateDB)
 	r.POST("/delete", controller.DeleteDB)
+	r.GET("/databases", controller.GetDatabases)
 
 	r.POST("/query", controller.HandleNLQuery)
 
