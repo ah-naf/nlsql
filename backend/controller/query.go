@@ -11,6 +11,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -21,10 +23,25 @@ var dbOperationRE = regexp.MustCompile(`(?i)\b(table|database|column|row|insert|
 
 const deepseekURL = "https://api.together.xyz/v1/chat/completions"
 const MODEL_NAME = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+const MAX_HISTORY_ITEMS = 10            // Keep track of last 10 interactions
+const HISTORY_EXPIRY = 30 * time.Minute // Session expires after 30 minutes of inactivity
 
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+type HistoryItem struct {
+	Prompt   string    `json:"prompt"`
+	SQL      string    `json:"sql"`
+	Response string    `json:"response"`
+	Time     time.Time `json:"time"`
+}
+
+type ConversationHistory struct {
+	Items    []HistoryItem `json:"items"`
+	ClientIP string        `json:"client_ip"`
+	LastUsed time.Time     `json:"last_used"`
 }
 
 type RequestBody struct {
@@ -32,6 +49,34 @@ type RequestBody struct {
 	Prompt       string    `json:"prompt"`
 	Confirmed    bool      `json:"confirmed"`
 	SQLToConfirm string    `json:"sqlToConfirm"`
+	SessionID    string    `json:"sessionId"` // Optional session ID for tracking conversations
+}
+
+var (
+	conversations     = make(map[string]*ConversationHistory)
+	conversationMutex sync.Mutex
+)
+
+// Cleanup expired conversations periodically
+func init() {
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			cleanupExpiredConversations()
+		}
+	}()
+}
+
+func cleanupExpiredConversations() {
+	conversationMutex.Lock()
+	defer conversationMutex.Unlock()
+
+	now := time.Now()
+	for id, history := range conversations {
+		if now.Sub(history.LastUsed) > HISTORY_EXPIRY {
+			delete(conversations, id)
+		}
+	}
 }
 
 func HandleNLQuery(c *gin.Context) {
@@ -40,6 +85,15 @@ func HandleNLQuery(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
 	}
+
+	// Generate session ID if not provided
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("%s-%s", c.ClientIP(), req.Config.DBName)
+	}
+
+	// Load or create conversation history
+	history := getConversationHistory(sessionID, c.ClientIP())
 
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -75,86 +129,82 @@ func HandleNLQuery(c *gin.Context) {
 
 	// prepare a variable to hold the final SQL we will execute
 	var sqlQuery string
-	var isQAResponse bool = false
 
-	// 2) Determine if this is a DB operation or QA request
-	// Use the QA fallback ONLY if both conditions are true:
-	// 1. Detector sent the "!!" signal AND
-	// 2. The query doesn't look like a DB operation
+	// 2) Check if this is a table detection miss
+	// Return error if table detector returned "!!" and it's not likely a DB operation
 	if strings.TrimSpace(detectorResp) == "!!" && !isLikelyDBOperation {
-		qaMsgs := []Message{
-			{
-				Role: "system",
-				Content: `You are a friendly assistant.  
-When answering, return your response *only* as a single SQL SELECT statement that returns your text as a column named "output".  
-For example:  
-  SELECT 'Hi, I am doing fine' AS output;`,
-			},
-			{Role: "user", Content: req.Prompt},
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Could not find relevant tables for your query. Please rephrase with specific table references.",
+			"session_id": sessionID,
+		})
+		return
+	}
+
+	// 3) Normal NL→SQL pipeline with conversation history
+
+	// Build history context for the LLM
+	var historyContext string
+	if len(history.Items) > 0 {
+		historyContext = "Previous related operations:\n\n"
+		for i, item := range history.Items {
+			historyContext += fmt.Sprintf("User: %s\nExecuted SQL: %s\n\n", item.Prompt, item.SQL)
+			if i >= 4 { // Only include last 5 interactions for context
+				break
+			}
 		}
-		ansSQL, err := connectLLM(qaMsgs)
+	}
+
+	// For CREATE/DROP/ALTER operations with no specific tables mentioned
+	if isLikelyDBOperation && (strings.TrimSpace(detectorResp) == "!!" || strings.Contains(strings.ToLower(req.Prompt), "table")) {
+		// Load the full schema
+		fullSchema, err := loadFullSchema(db)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM QA error: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
 			return
 		}
-		sqlQuery = strings.TrimSpace(ansSQL)
-		isQAResponse = true
 
-	} else {
-		// 3) Normal NL→SQL pipeline
-
-		// For CREATE/DROP/ALTER operations with no specific tables mentioned
-		if isLikelyDBOperation && (strings.TrimSpace(detectorResp) == "!!" || strings.Contains(strings.ToLower(req.Prompt), "table")) {
-			// Load the full schema
-			fullSchema, err := loadFullSchema(db)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
-				return
-			}
-
-			sqlPrompt := buildSQLPrompt(fullSchema, req.Prompt)
-			sqlMsgs := []Message{
-				{Role: "system", Content: "You are an expert SQL assistant that can create, alter, drop and query tables. Convert natural language into SQL using the schema below."},
-				{Role: "user", Content: sqlPrompt},
-			}
-			llmSQL, err := connectLLM(sqlMsgs)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
-				return
-			}
-			sqlQuery = strings.TrimSpace(llmSQL)
-		} else {
-			// parse the comma‐list into []string
-			detectedTables := parseCSV(detectorResp)
-
-			// load the full schema
-			fullSchema, err := loadFullSchema(db)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
-				return
-			}
-
-			// filter to only the detected tables
-			relevantSchema := map[string]TableInfo{}
-			for _, tbl := range detectedTables {
-				if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
-					relevantSchema[tbl] = info
-				}
-			}
-
-			// build and call the SQL‐generation LLM
-			sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
-			sqlMsgs := []Message{
-				{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
-				{Role: "user", Content: sqlPrompt},
-			}
-			llmSQL, err := connectLLM(sqlMsgs)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
-				return
-			}
-			sqlQuery = strings.TrimSpace(llmSQL)
+		sqlPrompt := buildSQLPromptWithHistory(fullSchema, req.Prompt, historyContext)
+		sqlMsgs := []Message{
+			{Role: "system", Content: "You are an expert SQL assistant that can create, alter, drop and query tables. Convert natural language into SQL using the schema below."},
+			{Role: "user", Content: sqlPrompt},
 		}
+		llmSQL, err := connectLLM(sqlMsgs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+			return
+		}
+		sqlQuery = strings.TrimSpace(llmSQL)
+	} else {
+		// parse the comma‐list into []string
+		detectedTables := parseCSV(detectorResp)
+
+		// load the full schema
+		fullSchema, err := loadFullSchema(db)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
+			return
+		}
+
+		// filter to only the detected tables
+		relevantSchema := map[string]TableInfo{}
+		for _, tbl := range detectedTables {
+			if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
+				relevantSchema[tbl] = info
+			}
+		}
+
+		// build and call the SQL-generation LLM with history
+		sqlPrompt := buildSQLPromptWithHistory(relevantSchema, req.Prompt, historyContext)
+		sqlMsgs := []Message{
+			{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
+			{Role: "user", Content: sqlPrompt},
+		}
+		llmSQL, err := connectLLM(sqlMsgs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+			return
+		}
+		sqlQuery = strings.TrimSpace(llmSQL)
 	}
 
 	// 4) Destructive check
@@ -165,6 +215,7 @@ For example:
 			"sql_preview":        sqlQuery,
 			"message":            fmt.Sprintf("This %s may modify your database. Please confirm before execution.", sqlType),
 			"sql_type":           sqlType,
+			"session_id":         sessionID,
 		})
 		return
 	}
@@ -221,6 +272,7 @@ For example:
 	response := gin.H{
 		"sql":          sqlQuery,
 		"result_table": result,
+		"session_id":   sessionID,
 	}
 
 	// Add sql_type and affected for modification queries
@@ -230,17 +282,63 @@ For example:
 		response["message"] = fmt.Sprintf("%s completed. %d rows affected.", getOperationType(sqlQuery), affected)
 	}
 
-	// Add QA flag if this was a QA response
-	if isQAResponse {
-		response["is_qa"] = true
+	// Add to conversation history
+	responseText := fmt.Sprintf("Executed successfully. %d rows affected.", affected)
+	if len(result) > 0 {
+		responseText = fmt.Sprintf("Returned %d results.", len(result))
 	}
+	addToHistory(sessionID, req.Prompt, sqlQuery, responseText)
 
 	c.JSON(http.StatusOK, response)
 }
 
+func getConversationHistory(sessionID, clientIP string) *ConversationHistory {
+	conversationMutex.Lock()
+	defer conversationMutex.Unlock()
+
+	history, exists := conversations[sessionID]
+	if !exists {
+		history = &ConversationHistory{
+			Items:    []HistoryItem{},
+			ClientIP: clientIP,
+			LastUsed: time.Now(),
+		}
+		conversations[sessionID] = history
+	} else {
+		history.LastUsed = time.Now()
+	}
+
+	return history
+}
+
+func addToHistory(sessionID, prompt, sql, response string) {
+	conversationMutex.Lock()
+	defer conversationMutex.Unlock()
+
+	history, exists := conversations[sessionID]
+	if !exists {
+		return // Should not happen but handle just in case
+	}
+
+	// Add new item
+	history.Items = append(history.Items, HistoryItem{
+		Prompt:   prompt,
+		SQL:      sql,
+		Response: response,
+		Time:     time.Now(),
+	})
+
+	// Trim if needed
+	if len(history.Items) > MAX_HISTORY_ITEMS {
+		history.Items = history.Items[len(history.Items)-MAX_HISTORY_ITEMS:]
+	}
+
+	history.LastUsed = time.Now()
+}
+
 func getAffectedRows(db *sql.DB) (int64, error) {
 	var affected int64
-	err := db.QueryRow("SELECT pg_affected_rows()").Scan(&affected)
+	err := db.QueryRow("SELECT ROW_COUNT()").Scan(&affected)
 	return affected, err
 }
 
@@ -403,4 +501,34 @@ func getOperationType(sql string) string {
 	}
 
 	return "SQL operation"
+}
+
+func buildSQLPromptWithHistory(schema map[string]TableInfo, userQuery, historyContext string) string {
+	var sb strings.Builder
+
+	for table, info := range schema {
+		sb.WriteString(fmt.Sprintf("Table: %s\n", table))
+		for _, col := range info.Columns {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", col.Name, col.DataType))
+		}
+		sb.WriteString("\n")
+	}
+
+	return fmt.Sprintf(`
+You are a SQL expert. Given the schema, conversation history, and user request, generate a valid SQL query.
+Only return the SQL. Do not explain anything. Do not format the sql. Give it in raw text.
+
+For CREATE TABLE operations, use appropriate data types and constraints.
+
+### Schema
+%s
+
+### Conversation History
+%s
+
+### Request
+%s
+
+### SQL
+`, sb.String(), historyContext, userQuery)
 }
