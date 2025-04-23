@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, Code } from "lucide-react";
+import { Loader2, Check, Code, AlertTriangle, Database } from "lucide-react";
 import SchemaSidebar from "@/components/SchemaSidebar";
 import axios from "axios";
 import {
@@ -10,6 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -19,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Tooltip,
   TooltipContent,
@@ -34,10 +36,16 @@ export default function Query() {
   const [results, setResults] = useState([]);
   const [sqlCode, setSqlCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showSql, setShowSql] = useState(false);
+  const [activeCodeIndex, setActiveCodeIndex] = useState(null);
   const chatContainerRef = useRef(null);
+  const [shouldReRender, setShouldReRender] = useState(false);
+
+  // New state for confirmation dialog
+  const [confirmationDialog, setConfirmationDialog] = useState({
+    open: false,
+    sql: "",
+    pendingQuery: "",
+  });
 
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
   if (!dbConfig || !dbConfig.dbname) {
@@ -46,42 +54,97 @@ export default function Query() {
   }
 
   const sendQuery = async (confirmed = false) => {
-    if (!query.trim()) return;
+    if (!query.trim() && !confirmed) return;
 
     setLoading(true);
-    setError("");
+
+    // Use the pending query from confirmation dialog if confirmed is true
+    const queryToSend = confirmed ? confirmationDialog.pendingQuery : query;
 
     try {
+      // Add the user query to results only when not confirmed
+      // This prevents duplicate user messages
+      if (!confirmed) {
+        setResults((prevResults) => [
+          ...prevResults,
+          {
+            type: "user",
+            content: queryToSend,
+          },
+        ]);
+      }
+
       const response = await axios.post("http://localhost:8080/query", {
         config: dbConfig,
-        prompt: query,
+        prompt: queryToSend,
+        confirmed: confirmed,
+        sqlToConfirm: confirmed ? confirmationDialog.sql : "",
       });
 
       const data = response.data;
 
-      if (data.sql) {
-        setSqlCode(data.sql);
-        setResults([
-          ...results,
-          {
-            type: "user",
-            content: query,
-          },
-          {
-            type: "assistant",
-            content: data.result_table,
-            sql: data.sql,
-          },
-        ]);
-        setQuery("");
-      } else if (data.error) {
-        setError(data.error);
+      // Handle confirmation request from backend
+      if (data.needs_confirmation) {
+        setConfirmationDialog({
+          open: true,
+          sql: data.sql_preview,
+          pendingQuery: queryToSend,
+        });
+        setLoading(false);
+        return;
       }
+
+      // Create results entry
+      let resultContent;
+      let resultMessage = "";
+
+      if (data.result_table && data.result_table.length > 0) {
+        // For SELECT queries with data
+        resultContent = data.result_table;
+        resultMessage =
+          data.message || `Query returned ${data.result_table.length} results`;
+      } else if (data.affected !== undefined) {
+        // For modification queries with affected rows info
+        setShouldReRender(!shouldReRender);
+        resultContent = [];
+        resultMessage =
+          data.message ||
+          `Operation completed. ${data.affected} rows affected.`;
+      } else {
+        // Fallback for other cases
+        resultContent = data.result_table || [];
+        resultMessage = data.message || "Query executed successfully";
+      }
+
+      setResults((prevResults) => [
+        ...prevResults,
+        {
+          type: "assistant",
+          responseType: "success",
+          content: resultContent,
+          sql: data.sql,
+          message: resultMessage,
+          sqlType: data.sql_type,
+          affectedRows: data.affected,
+        },
+      ]);
+
+      setSqlCode(data.sql);
+      setQuery("");
     } catch (err) {
-      setError(
+      const errorMessage =
         err.response?.data?.error ||
-          "An error occurred while processing your query"
-      );
+        "An error occurred while processing your query";
+
+      setResults((prevResults) => [
+        ...prevResults,
+        {
+          type: "assistant",
+          responseType: "error",
+          message: errorMessage,
+          sql: err.response?.data?.sql || "",
+        },
+      ]);
     } finally {
       setLoading(false);
 
@@ -94,10 +157,14 @@ export default function Query() {
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const confirmAndSendQuery = () => {
+    setConfirmationDialog((prev) => ({ ...prev, open: false }));
+    sendQuery(true);
+  };
+
+  const cancelQuery = () => {
+    setConfirmationDialog({ open: false, sql: "", pendingQuery: "" });
+    setLoading(false);
   };
 
   // Truncate long text and show in tooltip
@@ -164,11 +231,19 @@ export default function Query() {
     );
   };
 
+  const toggleCodeView = (index) => {
+    if (activeCodeIndex === index) {
+      setActiveCodeIndex(null); // Hide code if already showing
+    } else {
+      setActiveCodeIndex(index); // Show code for this message
+    }
+  };
+
   return (
     <div className="flex h-screen">
       {showSidebar && (
         <div className="w-[25rem]">
-          <SchemaSidebar />
+          <SchemaSidebar shouldReRender={shouldReRender} />
         </div>
       )}
 
@@ -219,54 +294,80 @@ export default function Query() {
               >
                 {message.type === "user" ? (
                   message.content
+                ) : message.responseType === "error" ? (
+                  <div>
+                    <Alert className="mb-3 bg-red-50 border-red-200">
+                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                      <AlertDescription className="text-red-700">
+                        {message.message}
+                      </AlertDescription>
+                    </Alert>
+
+                    {message.sql && (
+                      <div className="mb-3 relative">
+                        <h4 className="font-medium text-gray-700 mb-2">
+                          Failed SQL:
+                        </h4>
+                        <div className="relative">
+                          <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto pr-10">
+                            {message.sql}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="font-medium text-gray-700">Results:</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-gray-600"
-                        onClick={() =>
-                          setShowSql((prev) =>
-                            i === results.length - 1 ? !prev : prev
-                          )
-                        }
-                      >
-                        <Code size={16} className="mr-1" />
-                        {showSql && i === results.length - 1
-                          ? "Hide SQL"
-                          : "Show SQL"}
-                      </Button>
-                    </div>
-
-                    {showSql && i === results.length - 1 && (
-                      <div className="mb-3 relative">
-                        <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto">
-                          {message.sql}
-                        </pre>
+                      {message.sql && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="absolute top-2 right-2 h-8 w-8 p-0"
-                          onClick={() => copyToClipboard(message.sql)}
+                          className="h-8 px-2 text-gray-600"
+                          onClick={() => toggleCodeView(i)}
                         >
-                          {copied ? <Check size={16} /> : <Copy size={16} />}
+                          <Code size={16} className="mr-1" />
+                          {activeCodeIndex === i ? "Hide SQL" : "Show SQL"}
                         </Button>
+                      )}
+                    </div>
+
+                    {activeCodeIndex === i && message.sql && (
+                      <div className="mb-3 relative">
+                        <div className="relative">
+                          <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto pr-10">
+                            {message.sql}
+                          </pre>
+                        </div>
                       </div>
                     )}
 
-                    <ResultTable data={message.content} />
+                    {/* Display operation result message for modification queries */}
+                    {message.sqlType && message.affectedRows !== undefined && (
+                      <Alert className="mb-3 bg-blue-50 border-blue-200">
+                        <Database className="h-4 w-4 text-blue-500" />
+                        <AlertDescription>{message.message}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* Display general success message if no specific type is given */}
+                    {!message.sqlType && message.message && (
+                      <Alert className="mb-3 bg-green-50 border-green-200">
+                        <Check className="h-4 w-4 text-green-500" />
+                        <AlertDescription className="text-green-700">
+                          {message.message}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {message.content && message.content.length > 0 && (
+                      <ResultTable data={message.content} />
+                    )}
                   </div>
                 )}
               </div>
             ))
-          )}
-
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
           )}
         </main>
 
@@ -293,6 +394,52 @@ export default function Query() {
           </form>
         </footer>
       </div>
+
+      {/* SQL Confirmation Dialog */}
+      <Dialog
+        open={confirmationDialog.open}
+        onOpenChange={(open) => {
+          if (!open) cancelQuery();
+          setConfirmationDialog((prev) => ({ ...prev, open }));
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-amber-600">
+              <AlertTriangle className="h-5 w-5 mr-2" /> Confirmation Required
+            </DialogTitle>
+            <DialogDescription>
+              You are about to execute a query that will modify your database.
+              Please review the SQL before proceeding.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-amber-50 p-4 rounded border border-amber-200 my-4 overflow-auto">
+            <h4 className="font-semibold text-amber-800 mb-2">SQL Query:</h4>
+            <pre className="bg-white p-3 rounded font-mono text-sm overflow-x-auto border border-amber-100">
+              {confirmationDialog.sql}
+            </pre>
+          </div>
+
+          <DialogFooter className="flex justify-between sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={cancelQuery}
+              className="mt-2 sm:mt-0"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-amber-600 hover:bg-amber-700 mt-2 sm:mt-0"
+              onClick={confirmAndSendQuery}
+            >
+              Confirm and Execute
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -23,7 +23,13 @@ import {
   Info,
   Hash,
 } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  Dispatch,
+  SetStateAction,
+} from "react";
 
 type BriefTable = {
   name: string;
@@ -53,7 +59,11 @@ type DatabaseSchema = {
   [tableName: string]: TableInfo;
 };
 
-export default function SchemaSidebar() {
+type SchemaSidebarProps = {
+  shouldReRender: boolean;
+};
+
+export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
   const [briefTables, setBriefTables] = useState<BriefTable[]>([]);
   const [fullSchema, setFullSchema] = useState<DatabaseSchema>({});
@@ -76,7 +86,7 @@ export default function SchemaSidebar() {
         setError(e.response?.data?.error || e.message);
       }
     })();
-  }, []);
+  }, [shouldReRender]);
 
   const filtered = briefTables.filter((t) =>
     t.name.toLowerCase().includes(search.trim().toLowerCase())
