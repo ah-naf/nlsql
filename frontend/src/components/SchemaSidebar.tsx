@@ -141,7 +141,7 @@ export default function SchemaSidebar() {
 
   // Render
   return (
-    <aside className="w-[25rem] hidden lg:flex flex-col h-full border-r bg-white shadow">
+    <aside className="w-[25rem] flex flex-col h-full border-r bg-white shadow">
       <div className="p-4 py-5 border-b bg-gray-50">
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
           <Database size={20} className="text-indigo-600" />

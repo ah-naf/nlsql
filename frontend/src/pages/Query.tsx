@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, Copy, Check, Code } from "lucide-react";
 import SchemaSidebar from "@/components/SchemaSidebar";
+import axios from "axios";
 import {
   Dialog,
   DialogContent,
@@ -10,89 +11,177 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
 
 export default function Query() {
   const navigate = useNavigate();
   const [showSidebar, setShowSidebar] = useState(true);
-  const [schema, setSchema] = useState({});
-  const [chatHistory, setChatHistory] = useState([
-    {
-      role: "system",
-      content: "You are a helpful assistant. Only output SQL.",
-    },
-  ]);
   const [query, setQuery] = useState("");
-  const [result, setResult] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [sqlPreview, setSqlPreview] = useState("");
+  const [results, setResults] = useState([]);
+  const [sqlCode, setSqlCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [showSql, setShowSql] = useState(false);
   const chatContainerRef = useRef(null);
+
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
   if (!dbConfig || !dbConfig.dbname) {
     navigate("/");
     return null;
   }
 
-  useEffect(() => {
-    fetch("/query")
-      .then((res) => res.json())
-      .then((data) => {
-        setSchema(data.Schema || {});
-      });
-  }, []);
-
   const sendQuery = async (confirmed = false) => {
-    if (!query) return;
+    if (!query.trim()) return;
+
     setLoading(true);
-    const body = {
-      nl_query: query,
-      confirmed,
-      history: chatHistory,
-    };
-    const res = await fetch("/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.needs_confirmation) {
-      setSqlPreview(data.sql_preview);
-      setModalOpen(true);
-    } else {
-      setResult(data);
-      setChatHistory(data.history || chatHistory);
-    }
-    setLoading(false);
-    setQuery("");
-    setTimeout(() => {
-      chatContainerRef.current?.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth",
+    setError("");
+
+    try {
+      const response = await axios.post("http://localhost:8080/query", {
+        config: dbConfig,
+        prompt: query,
       });
-    }, 100);
+
+      const data = response.data;
+
+      if (data.sql) {
+        setSqlCode(data.sql);
+        setResults([
+          ...results,
+          {
+            type: "user",
+            content: query,
+          },
+          {
+            type: "assistant",
+            content: data.result_table,
+            sql: data.sql,
+          },
+        ]);
+        setQuery("");
+      } else if (data.error) {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError(
+        err.response?.data?.error ||
+          "An error occurred while processing your query"
+      );
+    } finally {
+      setLoading(false);
+
+      setTimeout(() => {
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
+    }
   };
 
-  const handleConfirm = () => {
-    setModalOpen(false);
-    sendQuery(true);
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Truncate long text and show in tooltip
+  const TruncatedCell = ({ content }) => {
+    const contentStr = String(content);
+    const isLong = contentStr.length > 20;
+
+    if (!isLong) {
+      return content === null ? (
+        <span className="text-gray-400">NULL</span>
+      ) : (
+        contentStr
+      );
+    }
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="cursor-help">
+              {contentStr.substring(0, 20)}...
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-md">
+            <p className="break-words">{contentStr}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  // Render a data table from the results using shadcn/ui Table component
+  const ResultTable = ({ data }) => {
+    if (!data || data.length === 0)
+      return <div className="text-gray-500">No results found</div>;
+
+    const columns = Object.keys(data[0]);
+
+    return (
+      <div className="w-full overflow-auto max-h-96 border rounded">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((column, i) => (
+                <TableHead key={i} className="bg-gray-50">
+                  {column}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((row, rowIndex) => (
+              <TableRow key={rowIndex}>
+                {columns.map((column, colIndex) => (
+                  <TableCell key={colIndex} className="max-w-xs">
+                    <TruncatedCell content={row[column]} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
   };
 
   return (
     <div className="flex h-screen">
+      {showSidebar && (
+        <div className="w-[25rem]">
+          <SchemaSidebar />
+        </div>
+      )}
+
       <div
-        className={`transition-all duration-300 ${
-          showSidebar ? "w-[25rem]" : "w-0"
-        } overflow-hidden`}
+        className={`flex-1 flex flex-col ${
+          showSidebar ? "w-[calc(100%-25rem)]" : "w-full"
+        }`}
       >
-        {showSidebar && <SchemaSidebar />}
-      </div>
-      <div className="flex-1 flex flex-col">
         <header className="border-b p-4 bg-white flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">NL → SQL Chat</h1>
           <div className="flex gap-2 items-center">
             <Button
-              className={`${
+              className={`xl:hidden ${
                 showSidebar
                   ? "bg-yellow-500 hover:bg-yellow-600"
                   : "bg-blue-500 hover:bg-blue-600"
@@ -103,7 +192,7 @@ export default function Query() {
             </Button>
             <Button
               className="bg-gray-700 hover:bg-gray-800 text-white"
-              onClick={() => (location.href = "/select")}
+              onClick={() => navigate("/")}
             >
               Change DB
             </Button>
@@ -114,38 +203,70 @@ export default function Query() {
           ref={chatContainerRef}
           className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100/50"
         >
-          {chatHistory.filter((m) => m.role !== "system").length === 0 ? (
+          {results.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center text-gray-600 text-lg">
               👋 Welcome! Ask something about your database to get started.
             </div>
           ) : (
-            chatHistory
-              .filter((m) => m.role !== "system")
-              .map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-lg px-4 py-2 rounded-lg ${
-                    m.role === "user"
-                      ? "bg-blue-600 text-white self-end ml-auto"
-                      : "bg-white text-gray-800"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              ))
+            results.map((message, i) => (
+              <div
+                key={i}
+                className={`${
+                  message.type === "user"
+                    ? "w-fit px-4 py-2 rounded-lg bg-blue-600 text-white self-end ml-auto"
+                    : "max-w-[95%] px-4 py-3 rounded-lg bg-white text-gray-800 shadow"
+                }`}
+              >
+                {message.type === "user" ? (
+                  message.content
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-medium text-gray-700">Results:</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-gray-600"
+                        onClick={() =>
+                          setShowSql((prev) =>
+                            i === results.length - 1 ? !prev : prev
+                          )
+                        }
+                      >
+                        <Code size={16} className="mr-1" />
+                        {showSql && i === results.length - 1
+                          ? "Hide SQL"
+                          : "Show SQL"}
+                      </Button>
+                    </div>
+
+                    {showSql && i === results.length - 1 && (
+                      <div className="mb-3 relative">
+                        <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto">
+                          {message.sql}
+                        </pre>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute top-2 right-2 h-8 w-8 p-0"
+                          onClick={() => copyToClipboard(message.sql)}
+                        >
+                          {copied ? <Check size={16} /> : <Copy size={16} />}
+                        </Button>
+                      </div>
+                    )}
+
+                    <ResultTable data={message.content} />
+                  </div>
+                )}
+              </div>
+            ))
           )}
 
-          {result?.sql_preview && (
-            <pre className="bg-gray-100 border p-3 rounded text-sm whitespace-pre-wrap font-mono">
-              {result.sql_preview}
-            </pre>
-          )}
-
-          {result?.message && (
-            <div className="text-green-700 font-semibold">{result.message}</div>
-          )}
-          {result?.error && (
-            <div className="text-red-600 font-semibold">{result.error}</div>
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+              {error}
+            </div>
           )}
         </main>
 
@@ -171,23 +292,6 @@ export default function Query() {
             </Button>
           </form>
         </footer>
-
-        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Confirm SQL Execution</DialogTitle>
-            </DialogHeader>
-            <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto">
-              {sqlPreview}
-            </pre>
-            <DialogFooter className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleConfirm}>Execute</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );
