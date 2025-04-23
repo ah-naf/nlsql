@@ -1,7 +1,14 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, Code, AlertTriangle, Database } from "lucide-react";
+import {
+  Loader2,
+  Check,
+  Code,
+  AlertTriangle,
+  Database,
+  PlayCircle,
+} from "lucide-react";
 import SchemaSidebar from "@/components/SchemaSidebar";
 import axios from "axios";
 import {
@@ -29,31 +36,188 @@ import {
 } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
 
+// Define types for clarity and TypeScript compatibility
+interface DBConfig {
+  host: string;
+  port: string;
+  user: string;
+  pass: string;
+  dbname: string;
+}
+
+interface ConfirmationDialog {
+  open: boolean;
+  sql: string;
+  pendingQuery: string;
+}
+
+interface ResultItem {
+  type: "user" | "assistant";
+  content?: any[];
+  responseType?: "success" | "error";
+  message?: string;
+  sql?: string;
+  sqlType?: string;
+  affectedRows?: number;
+  isQAResponse?: boolean;
+  extractedSql?: string | null;
+}
+
+interface TableCellProps {
+  content: any;
+  isQAColumn: boolean;
+}
+
+interface ResultTableProps {
+  data: any[];
+  isQAResponse?: boolean;
+  extractedSql?: string | null;
+  messageIndex: number;
+}
+
 export default function Query() {
   const navigate = useNavigate();
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [sqlCode, setSqlCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [activeCodeIndex, setActiveCodeIndex] = useState(null);
-  const chatContainerRef = useRef(null);
-  const [shouldReRender, setShouldReRender] = useState(false);
+  const [showSidebar, setShowSidebar] = useState<boolean>(true);
+  const [query, setQuery] = useState<string>("");
+  const [results, setResults] = useState<ResultItem[]>([]);
+  const [sqlCode, setSqlCode] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [activeCodeIndex, setActiveCodeIndex] = useState<number | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldReRender, setShouldReRender] = useState<boolean>(false);
+
+  // Add state for session ID
+  const [sessionId, setSessionId] = useState<string>("");
 
   // New state for confirmation dialog
-  const [confirmationDialog, setConfirmationDialog] = useState({
-    open: false,
-    sql: "",
-    pendingQuery: "",
-  });
+  const [confirmationDialog, setConfirmationDialog] =
+    useState<ConfirmationDialog>({
+      open: false,
+      sql: "",
+      pendingQuery: "",
+    });
 
-  const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
+  const dbConfig = JSON.parse(
+    localStorage.getItem("dbConfig") || "null"
+  ) as DBConfig | null;
   if (!dbConfig || !dbConfig.dbname) {
     navigate("/");
     return null;
   }
 
-  const sendQuery = async (confirmed = false) => {
+  // Initialize session ID on component mount
+  useEffect(() => {
+    // Generate a session ID based on DB connection details
+    const generatedSessionId = `${dbConfig.dbname}-${Date.now()}`;
+
+    // Check if there's a stored session ID for this database
+    const storedSessionId = localStorage.getItem(
+      `sessionId-${dbConfig.dbname}`
+    );
+
+    // Use stored session ID if available, otherwise use the new one
+    const activeSessionId = storedSessionId || generatedSessionId;
+
+    // Store the session ID
+    if (!storedSessionId) {
+      localStorage.setItem(`sessionId-${dbConfig.dbname}`, activeSessionId);
+    }
+
+    setSessionId(activeSessionId);
+  }, [dbConfig.dbname]);
+
+  // Function to extract SQL from QA output's SELECT statement
+  const extractSqlFromQaOutput = (output: string): string | null => {
+    if (!output) return null;
+
+    // Check for pattern: SELECT '...' AS output
+    const selectMatch = output.match(/SELECT\s+'(.+?)'\s+AS\s+output/i);
+    if (selectMatch && selectMatch[1]) {
+      // Unescape single quotes in the SQL
+      return selectMatch[1].replace(/''/g, "'");
+    }
+    return null;
+  };
+
+  // Function to execute extracted SQL
+  const executeExtractedSql = async (sql: string): Promise<void> => {
+    try {
+      setLoading(true);
+
+      const response = await axios.post("http://localhost:8080/query", {
+        config: dbConfig,
+        prompt: "Execute this SQL directly",
+        confirmed: true,
+        sqlToConfirm: sql,
+        sessionId: sessionId,
+      });
+
+      const data = response.data;
+
+      // Update session ID if provided by the backend
+      if (data.session_id) {
+        setSessionId(data.session_id);
+        localStorage.setItem(`sessionId-${dbConfig.dbname}`, data.session_id);
+      }
+
+      // Create results entry
+      let resultContent: any[] = [];
+      let resultMessage = "";
+
+      if (data.affected !== undefined) {
+        // For modification queries with affected rows info
+        setShouldReRender(!shouldReRender);
+        resultMessage = `Operation completed. ${data.affected} rows affected.`;
+      } else if (data.result_table && data.result_table.length > 0) {
+        // For SELECT queries with data
+        resultContent = data.result_table;
+        resultMessage = `Query returned ${data.result_table.length} results`;
+      } else {
+        // Fallback for other cases
+        resultContent = data.result_table || [];
+        resultMessage = "Query executed successfully";
+      }
+
+      setResults((prevResults) => [
+        ...prevResults,
+        {
+          type: "assistant",
+          responseType: "success",
+          content: resultContent,
+          sql: data.sql,
+          message: resultMessage,
+          sqlType: data.sql_type,
+          affectedRows: data.affected,
+          isQAResponse: false,
+        },
+      ]);
+    } catch (err: any) {
+      const errorMessage =
+        err.response?.data?.error ||
+        "An error occurred while executing the extracted SQL";
+
+      setResults((prevResults) => [
+        ...prevResults,
+        {
+          type: "assistant",
+          responseType: "error",
+          message: errorMessage,
+          sql: err.response?.data?.sql || "",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+
+      setTimeout(() => {
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
+    }
+  };
+
+  const sendQuery = async (confirmed = false): Promise<void> => {
     if (!query.trim() && !confirmed) return;
 
     setLoading(true);
@@ -69,7 +233,8 @@ export default function Query() {
           ...prevResults,
           {
             type: "user",
-            content: queryToSend,
+            content: [],
+            message: queryToSend,
           },
         ]);
       }
@@ -79,9 +244,16 @@ export default function Query() {
         prompt: queryToSend,
         confirmed: confirmed,
         sqlToConfirm: confirmed ? confirmationDialog.sql : "",
+        sessionId: sessionId, // Include the session ID with each request
       });
 
       const data = response.data;
+
+      // Update session ID if provided by the backend
+      if (data.session_id) {
+        setSessionId(data.session_id);
+        localStorage.setItem(`sessionId-${dbConfig.dbname}`, data.session_id);
+      }
 
       // Handle confirmation request from backend
       if (data.needs_confirmation) {
@@ -95,7 +267,7 @@ export default function Query() {
       }
 
       // Create results entry
-      let resultContent;
+      let resultContent: any[] = [];
       let resultMessage = "";
 
       // Check if this is a QA response - if there's only one row with one column named "output"
@@ -104,6 +276,12 @@ export default function Query() {
         data.result_table.length === 1 &&
         Object.keys(data.result_table[0]).length === 1 &&
         Object.keys(data.result_table[0])[0] === "output";
+
+      // Special handling for QA responses that contain SQL statements
+      let extractedSql = null;
+      if (isQAResponse && data.result_table[0].output) {
+        extractedSql = extractSqlFromQaOutput(data.result_table[0].output);
+      }
 
       if (data.result_table && data.result_table.length > 0) {
         // For SELECT queries with data
@@ -134,12 +312,13 @@ export default function Query() {
           sqlType: data.sql_type,
           affectedRows: data.affected,
           isQAResponse: isQAResponse,
+          extractedSql: extractedSql,
         },
       ]);
 
       setSqlCode(data.sql);
       setQuery("");
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage =
         err.response?.data?.error ||
         "An error occurred while processing your query";
@@ -165,20 +344,37 @@ export default function Query() {
     }
   };
 
-  const confirmAndSendQuery = () => {
+  const confirmAndSendQuery = (): void => {
     setConfirmationDialog((prev) => ({ ...prev, open: false }));
     sendQuery(true);
   };
 
-  const cancelQuery = () => {
+  const cancelQuery = (): void => {
     setConfirmationDialog({ open: false, sql: "", pendingQuery: "" });
     setLoading(false);
   };
 
+  // Add function to reset conversation history
+  const resetConversation = (): void => {
+    // Clear the current session ID in localStorage
+    localStorage.removeItem(`sessionId-${dbConfig.dbname}`);
+
+    // Generate a new session ID
+    const newSessionId = `${dbConfig.dbname}-${Date.now()}`;
+    localStorage.setItem(`sessionId-${dbConfig.dbname}`, newSessionId);
+    setSessionId(newSessionId);
+
+    // Clear the conversation UI
+    setResults([]);
+
+    // Show confirmation
+    alert("Conversation history has been reset.");
+  };
+
   // Truncate long text and show in tooltip for database content
   // But display full text for QA responses
-  const TruncatedCell = ({ content, isQAColumn }) => {
-    const contentStr = String(content);
+  const TruncatedCell: React.FC<TableCellProps> = ({ content, isQAColumn }) => {
+    const contentStr = content === null ? "NULL" : String(content);
 
     // Always show full text for QA responses in the "output" column
     if (isQAColumn) {
@@ -196,7 +392,7 @@ export default function Query() {
       return content === null ? (
         <span className="text-gray-400">NULL</span>
       ) : (
-        contentStr
+        <>{contentStr}</>
       );
     }
 
@@ -217,14 +413,43 @@ export default function Query() {
   };
 
   // Render a data table from the results using shadcn/ui Table component
-  const ResultTable = ({ data, isQAResponse }) => {
+  const ResultTable: React.FC<ResultTableProps> = ({
+    data,
+    isQAResponse = false,
+    extractedSql = null,
+    messageIndex,
+  }) => {
     if (!data || data.length === 0)
       return <div className="text-gray-500">No results found</div>;
 
     const columns = Object.keys(data[0]);
 
+    // For QA responses with embedded SQL, show a special UI
+    if (isQAResponse && columns.includes("output") && extractedSql) {
+      return (
+        <div className="w-full border rounded bg-white">
+          <div className="p-4 border-b">
+            <div className="prose max-w-none mb-2">
+              <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto">
+                {extractedSql}
+              </pre>
+            </div>
+            <div className="flex justify-end mt-2">
+              <Button
+                onClick={() => executeExtractedSql(extractedSql)}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Execute SQL
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // For QA responses, render a special version with full text
-    if (isQAResponse && columns.includes("output")) {
+    else if (isQAResponse && columns.includes("output")) {
       return (
         <div className="w-full p-4 border rounded bg-white">
           <div className="prose max-w-none">{data[0].output}</div>
@@ -264,7 +489,7 @@ export default function Query() {
     );
   };
 
-  const toggleCodeView = (index) => {
+  const toggleCodeView = (index: number): void => {
     if (activeCodeIndex === index) {
       setActiveCodeIndex(null); // Hide code if already showing
     } else {
@@ -299,6 +524,13 @@ export default function Query() {
               {showSidebar ? "Hide Schema" : "Show Schema"}
             </Button>
             <Button
+              variant="outline"
+              onClick={resetConversation}
+              className="text-gray-700"
+            >
+              New Chat
+            </Button>
+            <Button
               className="bg-gray-700 hover:bg-gray-800 text-white"
               onClick={() => navigate("/")}
             >
@@ -326,7 +558,7 @@ export default function Query() {
                 }`}
               >
                 {message.type === "user" ? (
-                  message.content
+                  message.message || ""
                 ) : message.responseType === "error" ? (
                   <div>
                     <Alert className="mb-3 bg-red-50 border-red-200">
@@ -400,6 +632,8 @@ export default function Query() {
                       <ResultTable
                         data={message.content}
                         isQAResponse={message.isQAResponse}
+                        extractedSql={message.extractedSql}
+                        messageIndex={i}
                       />
                     )}
                   </div>
