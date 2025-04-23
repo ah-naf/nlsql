@@ -35,7 +35,6 @@ type RequestBody struct {
 
 func HandleNLQuery(c *gin.Context) {
 	var req RequestBody
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
 		return
@@ -45,7 +44,6 @@ func HandleNLQuery(c *gin.Context) {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		req.Config.Host, req.Config.Port, req.Config.User, req.Config.Pass, req.Config.DBName,
 	)
-
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Connection error: " + err.Error()})
@@ -53,89 +51,82 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	defer db.Close()
 
-	// Handle confirmed destructive SQL directly
-	if req.Confirmed && req.SQLToConfirm != "" {
-		// Use Exec instead of Query for data modification statements
-		result, err := db.Exec(req.SQLToConfirm)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "SQL execution failed: " + err.Error(),
-				"sql":   req.SQLToConfirm,
-			})
-			return
-		}
-
-		// Get affected rows count
-		rowsAffected, _ := result.RowsAffected()
-
-		// Prepare result message based on SQL type
-		sqlType := getOperationType(req.SQLToConfirm)
-		message := fmt.Sprintf("%s executed successfully. %d row(s) affected.", sqlType, rowsAffected)
-
-		// Return result with message
-		c.JSON(http.StatusOK, gin.H{
-			"sql":      req.SQLToConfirm,
-			"message":  message,
-			"affected": rowsAffected,
-			"sql_type": sqlType,
-		})
-		return
-	}
-
-	// STEP 1: Get all table names
+	// 1) Fetch table names and detect relevant ones
 	tableNames, err := getTables(db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Table name error: " + err.Error()})
 		return
 	}
-
-	// STEP 2: Ask LLM to detect relevant tables
-	prompt := buildTableDetectionPrompt(tableNames, req.Prompt)
-	llmMessages := []Message{
-		{Role: "system", Content: "You are a helpful assistant that selects only relevant table names from a schema list."},
-		{Role: "user", Content: prompt},
+	detectorPrompt := buildTableDetectionPrompt(tableNames, req.Prompt)
+	detectorMsgs := []Message{
+		{Role: "system", Content: "You are a helpful assistant that selects only relevant table names from a schema list. If no relevant schema is found send '!!' as output."},
+		{Role: "user", Content: detectorPrompt},
 	}
 
-	response, err := connectLLM(llmMessages)
+	detectorResp, err := connectLLM(detectorMsgs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error: " + err.Error()})
 		return
 	}
 
-	// STEP 3: Parse LLM output into []string
-	detectedTables := parseCSV(response) // e.g. "users, courses" → ["users", "courses"]
+	// prepare a variable to hold the final SQL we will execute
+	var sqlQuery string
 
-	// STEP 4: Load full schema
-	fullSchema, err := loadFullSchema(db)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
-		return
-	}
-
-	// STEP 5: Filter schema to only relevant tables
-	relevantSchema := map[string]TableInfo{}
-	for _, tbl := range detectedTables {
-		if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
-			relevantSchema[tbl] = info
+	// 2) Fallback QA‐wrapped path
+	if strings.TrimSpace(detectorResp) == "!!" {
+		qaMsgs := []Message{
+			{
+				Role: "system",
+				Content: `You are a friendly assistant.  
+When answering, return your response *only* as a single SQL SELECT statement that returns your text as a column named "output".  
+For example:  
+  SELECT 'Hi, I am doing fine' AS output;`,
+			},
+			{Role: "user", Content: req.Prompt},
 		}
+		ansSQL, err := connectLLM(qaMsgs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM QA error: " + err.Error()})
+			return
+		}
+		sqlQuery = strings.TrimSpace(ansSQL)
+
+	} else {
+		// 3) Normal NL→SQL pipeline
+
+		// parse the comma‐list into []string
+		detectedTables := parseCSV(detectorResp)
+
+		// load the full schema
+		fullSchema, err := loadFullSchema(db)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
+			return
+		}
+
+		// filter to only the detected tables
+		relevantSchema := map[string]TableInfo{}
+		for _, tbl := range detectedTables {
+			if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
+				relevantSchema[tbl] = info
+			}
+		}
+
+		// build and call the SQL‐generation LLM
+		sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
+		sqlMsgs := []Message{
+			{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
+			{Role: "user", Content: sqlPrompt},
+		}
+		llmSQL, err := connectLLM(sqlMsgs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+			return
+		}
+		sqlQuery = strings.TrimSpace(llmSQL)
 	}
 
-	// STEP 6: Generate prompt to ask LLM for SQL
-	sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
-	sqlMessages := []Message{
-		{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
-		{Role: "user", Content: sqlPrompt},
-	}
-
-	sqlResult, err := connectLLM(sqlMessages)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
-		return
-	}
-
-	sqlQuery := strings.TrimSpace(sqlResult)
-
-	// Step 7: Check if SQL needs confirmation and user hasn't confirmed yet
+	// 4) Destructive check
 	if needsConfirmation(sqlQuery) && !req.Confirmed {
 		c.JSON(http.StatusOK, gin.H{
 			"needs_confirmation": true,
@@ -145,46 +136,37 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
-	// Step 8: Execute the SQL query if confirmed or doesn't need confirmation
+	// 5) Execute and return result_table
 	rows, err := db.Query(sqlQuery)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "SQL execution failed",
-			"sql":        sqlQuery,
-			"raw_output": sqlResult,
-			"llm_tables": detectedTables,
+			"error": "SQL execution failed",
+			"sql":   sqlQuery,
 		})
 		return
 	}
 	defer rows.Close()
 
-	// Step 9: Convert query result into []map[string]interface{}
-	columns, _ := rows.Columns()
+	cols, _ := rows.Columns()
 	result := []map[string]interface{}{}
-
 	for rows.Next() {
-		columnPointers := make([]interface{}, len(columns))
-		columnValues := make([]interface{}, len(columns))
-
-		for i := range columnPointers {
-			columnPointers[i] = &columnValues[i]
+		ptrs := make([]interface{}, len(cols))
+		vals := make([]interface{}, len(cols))
+		for i := range ptrs {
+			ptrs[i] = &vals[i]
 		}
-
-		if err := rows.Scan(columnPointers...); err != nil {
+		if err := rows.Scan(ptrs...); err != nil {
 			continue
 		}
-
-		rowMap := make(map[string]interface{})
-		for i, colName := range columns {
-			val := columnValues[i]
-			rowMap[colName] = val
+		row := map[string]interface{}{}
+		for i, name := range cols {
+			row[name] = vals[i]
 		}
-
-		result = append(result, rowMap)
+		result = append(result, row)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"sql":          sqlResult,
+		"sql":          sqlQuery,
 		"result_table": result,
 	})
 }
