@@ -20,43 +20,6 @@ type DBRequest struct {
 	DBName string `json:"dbname"`
 }
 
-// func GetSchema(c *gin.Context) {
-// 	req := DBRequest{
-// 		Host:   c.Query("host"),
-// 		Port:   c.Query("port"),
-// 		User:   c.Query("user"),
-// 		Pass:   c.Query("pass"),
-// 		DBName: c.Query("dbname"),
-// 	}
-
-// 	if req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "" || req.DBName == "" {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required query parameters"})
-// 		return
-// 	}
-
-// 	connStr := fmt.Sprintf(
-// 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-// 		req.Host, req.Port, req.User, req.Pass, req.DBName,
-// 	)
-
-// 	db, err := sql.Open("postgres", connStr)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Connection error: " + err.Error()})
-// 		return
-// 	}
-// 	defer db.Close()
-
-// 	schema, err := models.GetSchema(db)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get database schema: " + err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{
-// 		"schema": schema,
-// 	})
-// }
-
 func GetDatabases(c *gin.Context) {
 	req := DBRequest{
 		Host:   c.Query("host"),

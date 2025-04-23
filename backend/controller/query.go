@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,54 +42,68 @@ type ResponseBody struct {
 	History           []Message                `json:"history,omitempty"`
 }
 
-func needsConfirmation(sql string) bool {
-	return destructiveRE.MatchString(strings.TrimSpace(sql))
+func buildTableDetectionPrompt(tableNames []string, query string) string {
+	return fmt.Sprintf(`
+You are a database schema assistant.
+
+You are given a list of table names:
+
+%s
+
+Based on the user's request, return only the **relevant table names** from the list above. 
+Do not include any descriptions or explanations. Only output the table names as a comma-separated list.
+
+### Request
+%s
+
+### Output (comma-separated table names only)
+`, strings.Join(tableNames, ", "), query)
 }
 
-func loadEnv() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
+func HandleNLQuery(c *gin.Context) {
+	var req struct {
+		Config DBRequest `json:"config"`
+		Prompt string    `json:"prompt"`
 	}
-}
 
-func buildPrompt(schema map[string]TableInfo, userText string) string {
-	return ""
-	// var parts []string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
+		return
+	}
 
-	// for table, cols := range schema {
-	// 	// build column definitions with type (+ FK if any)
-	// 	var colDefs []string
-	// 	for _, c := range cols {
-	// 		def := fmt.Sprintf("%s %s", c.Name, c.DataType)
-	// 		if c.ForeignTable.Valid && c.ForeignColumn.Valid {
-	// 			def = fmt.Sprintf(
-	// 				"%s %s REFERENCES %s(%s)",
-	// 				c.Name,
-	// 				c.DataType,
-	// 				c.ForeignTable.String,
-	// 				c.ForeignColumn.String,
-	// 			)
-	// 		}
-	// 		colDefs = append(colDefs, def)
-	// 	}
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		req.Config.Host, req.Config.Port, req.Config.User, req.Config.Pass, req.Config.DBName,
+	)
 
-	// 	// join columns and wrap in TableName(...)
-	// 	parts = append(parts,
-	// 		fmt.Sprintf("%s(%s)", table, strings.Join(colDefs, ", ")),
-	// 	)
-	// }
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Connection error: " + err.Error()})
+		return
+	}
+	defer db.Close()
 
-	// schemaDefs := strings.Join(parts, "; ")
+	tableNames, err := getTables(db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Table name error: " + err.Error()})
+		return
+	}
 
-	// return fmt.Sprintf(
-	// 	"Here are the table schemas, including data types and foreign keys: %s.\n"+
-	// 		"Generate an SQL query for the following request:\n"+
-	// 		"%s\n\n"+
-	// 		"***Only output the SQL query, with no explanation or markdown formatting.***",
-	// 	schemaDefs,
-	// 	userText,
-	// )
+	prompt := buildTableDetectionPrompt(tableNames, req.Prompt)
+	llmMessages := []Message{
+		{Role: "system", Content: "You are a helpful assistant that selects only relevant table names from a schema list."},
+		{Role: "user", Content: prompt},
+	}
+
+	response, err := connectLLM(llmMessages)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tables_used": response, 
+	})
 }
 
 func connectLLM(messages []Message) (string, error) {
@@ -141,134 +156,37 @@ func connectLLM(messages []Message) (string, error) {
 	return out.Choices[0].Message.Content, nil
 }
 
-func HandleNLQuery(c *gin.Context) {
-	// var req RequestBody
-	// if err := c.BindJSON(&req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, ResponseBody{
-	// 		Error: "invalid JSON: " + err.Error(),
-	// 	})
-	// 	return
-	// }
+func getTables(db *sql.DB) ([]string, error) {
+	rows, err := db.Query(`
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema='public'
+			ORDER BY table_name
+		`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-	// sess := sessions.Default(c)
+	tables := []string{}
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, err
+		}
+		tables = append(tables, table)
+	}
 
-	// history := req.History
-	// if len(history) == 0 {
-	// 	history = []Message{
-	// 		{Role: "system", Content: "You are a helpful assistant. Only output SQL."},
-	// 	}
-	// }
+	return tables, nil
+}
 
-	// connStr, ok := sess.Get("connection_string").(string)
-	// if !ok || connStr == "" {
-	// 	c.JSON(http.StatusBadRequest, ResponseBody{
-	// 		Error: "no database connection in session",
-	// 	})
-	// 	return
-	// }
+func needsConfirmation(sql string) bool {
+	return destructiveRE.MatchString(strings.TrimSpace(sql))
+}
 
-	// db, err := sql.Open("postgres", connStr)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 		Error: fmt.Sprintf("DB connect error: %v", err),
-	// 	})
-	// 	return
-	// }
-	// defer db.Close()
-
-	// schema, err := models.GetSchema(db)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 		Error: fmt.Sprintf("Schema fetch error: %v", err),
-	// 	})
-	// 	return
-	// }
-
-	// userPrompt := buildPrompt(schema, req.NLQuery)
-
-	// updatedHistory := append([]Message{}, history...)
-	// updatedHistory = append(updatedHistory, Message{Role: "user", Content: userPrompt})
-
-	// sqlCommand, err := connectLLM(updatedHistory)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 		Error:   err.Error(),
-	// 		History: history, // Return original history on error
-	// 	})
-	// 	return
-	// }
-
-	// if needsConfirmation(sqlCommand) && !req.Confirmed {
-	// 	updatedHistory = updatedHistory[:len(updatedHistory)-1]
-	// 	c.JSON(http.StatusOK, ResponseBody{
-	// 		NeedsConfirmation: true,
-	// 		SQLPreview:        sqlCommand,
-	// 		History:           updatedHistory, // Return updated history with user's message
-	// 	})
-	// 	return
-	// }
-
-	// updatedHistory = updatedHistory[:len(updatedHistory)-1]
-	// updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
-
-	// upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
-	// if strings.HasPrefix(upper, "SELECT") {
-	// 	rows, err := db.Query(sqlCommand)
-	// 	if err != nil {
-	// 		c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 			Error:   fmt.Sprintf("query error: %v", err),
-	// 			History: updatedHistory,
-	// 		})
-	// 		return
-	// 	}
-	// 	defer rows.Close()
-
-	// 	cols, _ := rows.Columns()
-	// 	result := []map[string]interface{}{}
-
-	// 	for rows.Next() {
-	// 		values := make([]interface{}, len(cols))
-	// 		pointers := make([]interface{}, len(cols))
-	// 		for i := range values {
-	// 			pointers[i] = &values[i]
-	// 		}
-	// 		if err := rows.Scan(pointers...); err != nil {
-	// 			c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 				Error:   fmt.Sprintf("scan error: %v", err),
-	// 				History: updatedHistory,
-	// 			})
-	// 			return
-	// 		}
-	// 		rowMap := make(map[string]interface{}, len(cols))
-	// 		for i, col := range cols {
-	// 			rowMap[col] = values[i]
-	// 		}
-	// 		result = append(result, rowMap)
-	// 	}
-
-	// 	c.JSON(http.StatusOK, ResponseBody{
-	// 		Status:     "ok",
-	// 		SQLPreview: sqlCommand,
-	// 		Table:      result,
-	// 		History:    updatedHistory,
-	// 	})
-	// 	return
-	// }
-
-	// res, err := db.Exec(sqlCommand)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
-	// 		Error:   fmt.Sprintf("exec error: %v", err),
-	// 		History: updatedHistory,
-	// 	})
-	// 	return
-	// }
-	// affected, _ := res.RowsAffected()
-
-	// c.JSON(http.StatusOK, ResponseBody{
-	// 	Status:     "ok",
-	// 	SQLPreview: sqlCommand,
-	// 	Message:    fmt.Sprintf("Query OK, %d rows affected", affected),
-	// 	History:    updatedHistory,
-	// })
+func loadEnv() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
 }
