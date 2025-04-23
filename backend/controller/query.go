@@ -2,19 +2,15 @@ package controller
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net/http"
-	"nlsql/models"
 	"os"
 	"regexp"
 	"strings"
 
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -36,14 +32,13 @@ type RequestBody struct {
 }
 
 type ResponseBody struct {
-	Status            string                      `json:"status,omitempty"`
-	Error             string                      `json:"error,omitempty"`
-	NeedsConfirmation bool                        `json:"needs_confirmation,omitempty"`
-	SQLPreview        string                      `json:"sql_preview,omitempty"`
-	Table             []map[string]interface{}    `json:"table,omitempty"`
-	Message           string                      `json:"message,omitempty"`
-	History           []Message                   `json:"history,omitempty"`
-	Schema            map[string]models.TableInfo `json:"schema,omitempty"`
+	Status            string                   `json:"status,omitempty"`
+	Error             string                   `json:"error,omitempty"`
+	NeedsConfirmation bool                     `json:"needs_confirmation,omitempty"`
+	SQLPreview        string                   `json:"sql_preview,omitempty"`
+	Table             []map[string]interface{} `json:"table,omitempty"`
+	Message           string                   `json:"message,omitempty"`
+	History           []Message                `json:"history,omitempty"`
 }
 
 func needsConfirmation(sql string) bool {
@@ -57,34 +52,7 @@ func loadEnv() {
 	}
 }
 
-func ShowQueryPage(c *gin.Context) {
-	sess := sessions.Default(c)
-
-	connStr := sess.Get("connection_string").(string)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	schema, err := models.GetSchema(db)
-	if err != nil {
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	schemaBytes, _ := json.Marshal(schema)
-	schemaJS := template.JS(schemaBytes)
-	dbName := sess.Get("dbname").(string)
-
-	c.HTML(http.StatusOK, "query.html", gin.H{
-		"Schema":     schema,
-		"SchemaJSON": schemaJS,
-		"DBName":     dbName,
-	})
-}
-
-func buildPrompt(schema map[string]models.TableInfo, userText string) string {
+func buildPrompt(schema map[string]TableInfo, userText string) string {
 	return ""
 	// var parts []string
 
@@ -174,143 +142,133 @@ func connectLLM(messages []Message) (string, error) {
 }
 
 func HandleNLQuery(c *gin.Context) {
-	var req RequestBody
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ResponseBody{
-			Error: "invalid JSON: " + err.Error(),
-		})
-		return
-	}
+	// var req RequestBody
+	// if err := c.BindJSON(&req); err != nil {
+	// 	c.JSON(http.StatusBadRequest, ResponseBody{
+	// 		Error: "invalid JSON: " + err.Error(),
+	// 	})
+	// 	return
+	// }
 
-	sess := sessions.Default(c)
+	// sess := sessions.Default(c)
 
-	history := req.History
-	if len(history) == 0 {
-		history = []Message{
-			{Role: "system", Content: "You are a helpful assistant. Only output SQL."},
-		}
-	}
+	// history := req.History
+	// if len(history) == 0 {
+	// 	history = []Message{
+	// 		{Role: "system", Content: "You are a helpful assistant. Only output SQL."},
+	// 	}
+	// }
 
-	connStr, ok := sess.Get("connection_string").(string)
-	if !ok || connStr == "" {
-		c.JSON(http.StatusBadRequest, ResponseBody{
-			Error: "no database connection in session",
-		})
-		return
-	}
+	// connStr, ok := sess.Get("connection_string").(string)
+	// if !ok || connStr == "" {
+	// 	c.JSON(http.StatusBadRequest, ResponseBody{
+	// 		Error: "no database connection in session",
+	// 	})
+	// 	return
+	// }
 
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error: fmt.Sprintf("DB connect error: %v", err),
-		})
-		return
-	}
-	defer db.Close()
+	// db, err := sql.Open("postgres", connStr)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 		Error: fmt.Sprintf("DB connect error: %v", err),
+	// 	})
+	// 	return
+	// }
+	// defer db.Close()
 
-	schema, err := models.GetSchema(db)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error: fmt.Sprintf("Schema fetch error: %v", err),
-		})
-		return
-	}
+	// schema, err := models.GetSchema(db)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 		Error: fmt.Sprintf("Schema fetch error: %v", err),
+	// 	})
+	// 	return
+	// }
 
-	userPrompt := buildPrompt(schema, req.NLQuery)
+	// userPrompt := buildPrompt(schema, req.NLQuery)
 
-	updatedHistory := append([]Message{}, history...)
-	updatedHistory = append(updatedHistory, Message{Role: "user", Content: userPrompt})
+	// updatedHistory := append([]Message{}, history...)
+	// updatedHistory = append(updatedHistory, Message{Role: "user", Content: userPrompt})
 
-	sqlCommand, err := connectLLM(updatedHistory)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error:   err.Error(),
-			History: history, // Return original history on error
-		})
-		return
-	}
+	// sqlCommand, err := connectLLM(updatedHistory)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 		Error:   err.Error(),
+	// 		History: history, // Return original history on error
+	// 	})
+	// 	return
+	// }
 
-	if needsConfirmation(sqlCommand) && !req.Confirmed {
-		updatedHistory = updatedHistory[:len(updatedHistory)-1]
-		c.JSON(http.StatusOK, ResponseBody{
-			NeedsConfirmation: true,
-			SQLPreview:        sqlCommand,
-			History:           updatedHistory, // Return updated history with user's message
-		})
-		return
-	}
+	// if needsConfirmation(sqlCommand) && !req.Confirmed {
+	// 	updatedHistory = updatedHistory[:len(updatedHistory)-1]
+	// 	c.JSON(http.StatusOK, ResponseBody{
+	// 		NeedsConfirmation: true,
+	// 		SQLPreview:        sqlCommand,
+	// 		History:           updatedHistory, // Return updated history with user's message
+	// 	})
+	// 	return
+	// }
 
-	updatedHistory = updatedHistory[:len(updatedHistory)-1]
-	updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
+	// updatedHistory = updatedHistory[:len(updatedHistory)-1]
+	// updatedHistory = append(updatedHistory, Message{Role: "assistant", Content: sqlCommand})
 
-	upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
-	if strings.HasPrefix(upper, "SELECT") {
-		rows, err := db.Query(sqlCommand)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, ResponseBody{
-				Error:   fmt.Sprintf("query error: %v", err),
-				History: updatedHistory,
-			})
-			return
-		}
-		defer rows.Close()
+	// upper := strings.ToUpper(strings.TrimSpace(sqlCommand))
+	// if strings.HasPrefix(upper, "SELECT") {
+	// 	rows, err := db.Query(sqlCommand)
+	// 	if err != nil {
+	// 		c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 			Error:   fmt.Sprintf("query error: %v", err),
+	// 			History: updatedHistory,
+	// 		})
+	// 		return
+	// 	}
+	// 	defer rows.Close()
 
-		cols, _ := rows.Columns()
-		result := []map[string]interface{}{}
+	// 	cols, _ := rows.Columns()
+	// 	result := []map[string]interface{}{}
 
-		for rows.Next() {
-			values := make([]interface{}, len(cols))
-			pointers := make([]interface{}, len(cols))
-			for i := range values {
-				pointers[i] = &values[i]
-			}
-			if err := rows.Scan(pointers...); err != nil {
-				c.JSON(http.StatusInternalServerError, ResponseBody{
-					Error:   fmt.Sprintf("scan error: %v", err),
-					History: updatedHistory,
-				})
-				return
-			}
-			rowMap := make(map[string]interface{}, len(cols))
-			for i, col := range cols {
-				rowMap[col] = values[i]
-			}
-			result = append(result, rowMap)
-		}
+	// 	for rows.Next() {
+	// 		values := make([]interface{}, len(cols))
+	// 		pointers := make([]interface{}, len(cols))
+	// 		for i := range values {
+	// 			pointers[i] = &values[i]
+	// 		}
+	// 		if err := rows.Scan(pointers...); err != nil {
+	// 			c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 				Error:   fmt.Sprintf("scan error: %v", err),
+	// 				History: updatedHistory,
+	// 			})
+	// 			return
+	// 		}
+	// 		rowMap := make(map[string]interface{}, len(cols))
+	// 		for i, col := range cols {
+	// 			rowMap[col] = values[i]
+	// 		}
+	// 		result = append(result, rowMap)
+	// 	}
 
-		c.JSON(http.StatusOK, ResponseBody{
-			Status:     "ok",
-			SQLPreview: sqlCommand,
-			Table:      result,
-			History:    updatedHistory,
-		})
-		return
-	}
+	// 	c.JSON(http.StatusOK, ResponseBody{
+	// 		Status:     "ok",
+	// 		SQLPreview: sqlCommand,
+	// 		Table:      result,
+	// 		History:    updatedHistory,
+	// 	})
+	// 	return
+	// }
 
-	res, err := db.Exec(sqlCommand)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error:   fmt.Sprintf("exec error: %v", err),
-			History: updatedHistory,
-		})
-		return
-	}
-	affected, _ := res.RowsAffected()
+	// res, err := db.Exec(sqlCommand)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, ResponseBody{
+	// 		Error:   fmt.Sprintf("exec error: %v", err),
+	// 		History: updatedHistory,
+	// 	})
+	// 	return
+	// }
+	// affected, _ := res.RowsAffected()
 
-	schemaTemp, err := models.GetSchema(db)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ResponseBody{
-			Error:   fmt.Sprintf("schema refresh error: %v", err),
-			History: updatedHistory,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, ResponseBody{
-		Status:     "ok",
-		SQLPreview: sqlCommand,
-		Message:    fmt.Sprintf("Query OK, %d rows affected", affected),
-		History:    updatedHistory,
-		Schema:     schemaTemp,
-	})
+	// c.JSON(http.StatusOK, ResponseBody{
+	// 	Status:     "ok",
+	// 	SQLPreview: sqlCommand,
+	// 	Message:    fmt.Sprintf("Query OK, %d rows affected", affected),
+	// 	History:    updatedHistory,
+	// })
 }

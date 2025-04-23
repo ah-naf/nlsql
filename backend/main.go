@@ -25,7 +25,10 @@ func main() {
 	r.POST("/create", controller.CreateDB)
 	r.POST("/delete", controller.DeleteDB)
 	r.GET("/databases", controller.GetDatabases)
-	r.GET("/schema", controller.GetSchema)
+
+	// Schema endpoints
+	r.GET("/schema", controller.GetSchema)                 // brief or full based on ?brief=true
+	r.GET("/schema/:tableName", controller.GetTableSchema) // single-table detail
 
 	r.POST("/query", controller.HandleNLQuery)
 
