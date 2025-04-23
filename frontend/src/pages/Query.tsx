@@ -10,8 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 
 export default function Query() {
+  const navigate = useNavigate();
+  const [showSidebar, setShowSidebar] = useState(true);
   const [schema, setSchema] = useState({});
   const [chatHistory, setChatHistory] = useState([
     {
@@ -25,6 +28,11 @@ export default function Query() {
   const [sqlPreview, setSqlPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const chatContainerRef = useRef(null);
+  const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
+  if (!dbConfig || !dbConfig.dbname) {
+    navigate("/");
+    return null;
+  }
 
   useEffect(() => {
     fetch("/query")
@@ -72,33 +80,60 @@ export default function Query() {
 
   return (
     <div className="flex h-screen">
-      <SchemaSidebar schema={schema} />
+      <div
+        className={`transition-all duration-300 ${
+          showSidebar ? "w-[25rem]" : "w-0"
+        } overflow-hidden`}
+      >
+        {showSidebar && <SchemaSidebar />}
+      </div>
       <div className="flex-1 flex flex-col">
         <header className="border-b p-4 bg-white flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">NL → SQL Chat</h1>
-          <Button variant="outline" onClick={() => (location.href = "/select")}>
-            Change DB
-          </Button>
+          <div className="flex gap-2 items-center">
+            <Button
+              className={`${
+                showSidebar
+                  ? "bg-yellow-500 hover:bg-yellow-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white`}
+              onClick={() => setShowSidebar(!showSidebar)}
+            >
+              {showSidebar ? "Hide Schema" : "Show Schema"}
+            </Button>
+            <Button
+              className="bg-gray-700 hover:bg-gray-800 text-white"
+              onClick={() => (location.href = "/select")}
+            >
+              Change DB
+            </Button>
+          </div>
         </header>
 
         <main
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
+          className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100/50"
         >
-          {chatHistory
-            .filter((m) => m.role !== "system")
-            .map((m, i) => (
-              <div
-                key={i}
-                className={`max-w-lg px-4 py-2 rounded-lg ${
-                  m.role === "user"
-                    ? "bg-blue-600 text-white self-end ml-auto"
-                    : "bg-white text-gray-800"
-                }`}
-              >
-                {m.content}
-              </div>
-            ))}
+          {chatHistory.filter((m) => m.role !== "system").length === 0 ? (
+            <div className="flex items-center justify-center h-full text-center text-gray-600 text-lg">
+              👋 Welcome! Ask something about your database to get started.
+            </div>
+          ) : (
+            chatHistory
+              .filter((m) => m.role !== "system")
+              .map((m, i) => (
+                <div
+                  key={i}
+                  className={`max-w-lg px-4 py-2 rounded-lg ${
+                    m.role === "user"
+                      ? "bg-blue-600 text-white self-end ml-auto"
+                      : "bg-white text-gray-800"
+                  }`}
+                >
+                  {m.content}
+                </div>
+              ))
+          )}
 
           {result?.sql_preview && (
             <pre className="bg-gray-100 border p-3 rounded text-sm whitespace-pre-wrap font-mono">

@@ -9,19 +9,26 @@ import Connect from "./pages/Connect";
 import Select from "./pages/Select";
 
 export default function App() {
-  const isConnected = localStorage.getItem("dbConfig") !== null;
+  const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={isConnected ? <Select /> : <Connect />} />
+        <Route
+          path="/"
+          element={
+            dbConfig ? dbConfig.dbname ? <Query /> : <Select /> : <Connect />
+          }
+        />
         <Route
           path="/select"
-          element={isConnected ? <Select /> : <Navigate to="/" />}
+          element={dbConfig ? <Select /> : <Navigate to="/" />}
         />
         <Route
           path="/query"
-          element={isConnected ? <Query /> : <Navigate to="/" />}
+          element={
+            dbConfig && dbConfig.dbname ? <Query /> : <Navigate to="/" />
+          }
         />
       </Routes>
     </Router>

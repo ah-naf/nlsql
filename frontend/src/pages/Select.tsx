@@ -28,7 +28,10 @@ export default function Select() {
   const [dbToDelete, setDbToDelete] = useState<string | null>(null);
   const navigate = useNavigate();
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
-  if (!dbConfig) return navigate("/");
+  if (!dbConfig) {
+    navigate("/");
+    return null;
+  }
 
   useEffect(() => {
     const fetchDatabases = async () => {
@@ -89,13 +92,10 @@ export default function Select() {
 
   const handleSelect = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/select", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ db: selected }).toString(),
-    });
-    if (res.redirected) window.location.href = res.url;
-    else setError("Failed to select database");
+    if (!dbConfig) return navigate("/");
+    dbConfig.dbname = selected;
+    localStorage.setItem("dbConfig", JSON.stringify(dbConfig));
+    navigate("/query");
   };
 
   return (
