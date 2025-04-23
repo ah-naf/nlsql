@@ -27,26 +27,14 @@ type Message struct {
 }
 
 type RequestBody struct {
-	NLQuery   string    `json:"nl_query"`
-	Confirmed bool      `json:"confirmed"`
-	History   []Message `json:"history"`
-}
-
-type ResponseBody struct {
-	Status            string                   `json:"status,omitempty"`
-	Error             string                   `json:"error,omitempty"`
-	NeedsConfirmation bool                     `json:"needs_confirmation,omitempty"`
-	SQLPreview        string                   `json:"sql_preview,omitempty"`
-	Table             []map[string]interface{} `json:"table,omitempty"`
-	Message           string                   `json:"message,omitempty"`
-	History           []Message                `json:"history,omitempty"`
+	Config       DBRequest `json:"config"`
+	Prompt       string    `json:"prompt"`
+	Confirmed    bool      `json:"confirmed"`
+	SQLToConfirm string    `json:"sqlToConfirm"`
 }
 
 func HandleNLQuery(c *gin.Context) {
-	var req struct {
-		Config DBRequest `json:"config"`
-		Prompt string    `json:"prompt"`
-	}
+	var req RequestBody
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
@@ -64,6 +52,35 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 	defer db.Close()
+
+	// Handle confirmed destructive SQL directly
+	if req.Confirmed && req.SQLToConfirm != "" {
+		// Use Exec instead of Query for data modification statements
+		result, err := db.Exec(req.SQLToConfirm)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "SQL execution failed: " + err.Error(),
+				"sql":   req.SQLToConfirm,
+			})
+			return
+		}
+
+		// Get affected rows count
+		rowsAffected, _ := result.RowsAffected()
+
+		// Prepare result message based on SQL type
+		sqlType := getOperationType(req.SQLToConfirm)
+		message := fmt.Sprintf("%s executed successfully. %d row(s) affected.", sqlType, rowsAffected)
+
+		// Return result with message
+		c.JSON(http.StatusOK, gin.H{
+			"sql":      req.SQLToConfirm,
+			"message":  message,
+			"affected": rowsAffected,
+			"sql_type": sqlType,
+		})
+		return
+	}
 
 	// STEP 1: Get all table names
 	tableNames, err := getTables(db)
@@ -118,7 +135,17 @@ func HandleNLQuery(c *gin.Context) {
 
 	sqlQuery := strings.TrimSpace(sqlResult)
 
-	// Step 5: Execute the SQL query
+	// Step 7: Check if SQL needs confirmation and user hasn't confirmed yet
+	if needsConfirmation(sqlQuery) && !req.Confirmed {
+		c.JSON(http.StatusOK, gin.H{
+			"needs_confirmation": true,
+			"sql_preview":        sqlQuery,
+			"message":            "This query may modify your database. Please confirm before execution.",
+		})
+		return
+	}
+
+	// Step 8: Execute the SQL query if confirmed or doesn't need confirmation
 	rows, err := db.Query(sqlQuery)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -131,7 +158,7 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	// Step 6: Convert query result into []map[string]interface{}
+	// Step 9: Convert query result into []map[string]interface{}
 	columns, _ := rows.Columns()
 	result := []map[string]interface{}{}
 
@@ -298,4 +325,24 @@ Do not include any descriptions or explanations. Only output the table names as 
 
 ### Output (comma-separated table names only)
 `, strings.Join(tableNames, ", "), query)
+}
+
+func getOperationType(sql string) string {
+	sql = strings.TrimSpace(strings.ToUpper(sql))
+
+	if strings.HasPrefix(sql, "INSERT") {
+		return "INSERT operation"
+	} else if strings.HasPrefix(sql, "UPDATE") {
+		return "UPDATE operation"
+	} else if strings.HasPrefix(sql, "DELETE") {
+		return "DELETE operation"
+	} else if strings.HasPrefix(sql, "DROP") {
+		return "DROP operation"
+	} else if strings.HasPrefix(sql, "ALTER") {
+		return "ALTER operation"
+	} else if strings.HasPrefix(sql, "CREATE") {
+		return "CREATE operation"
+	}
+
+	return "SQL operation"
 }
