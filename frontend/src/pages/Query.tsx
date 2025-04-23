@@ -98,6 +98,13 @@ export default function Query() {
       let resultContent;
       let resultMessage = "";
 
+      // Check if this is a QA response - if there's only one row with one column named "output"
+      const isQAResponse =
+        data.result_table &&
+        data.result_table.length === 1 &&
+        Object.keys(data.result_table[0]).length === 1 &&
+        Object.keys(data.result_table[0])[0] === "output";
+
       if (data.result_table && data.result_table.length > 0) {
         // For SELECT queries with data
         resultContent = data.result_table;
@@ -126,6 +133,7 @@ export default function Query() {
           message: resultMessage,
           sqlType: data.sql_type,
           affectedRows: data.affected,
+          isQAResponse: isQAResponse,
         },
       ]);
 
@@ -167,9 +175,21 @@ export default function Query() {
     setLoading(false);
   };
 
-  // Truncate long text and show in tooltip
-  const TruncatedCell = ({ content }) => {
+  // Truncate long text and show in tooltip for database content
+  // But display full text for QA responses
+  const TruncatedCell = ({ content, isQAColumn }) => {
     const contentStr = String(content);
+
+    // Always show full text for QA responses in the "output" column
+    if (isQAColumn) {
+      return content === null ? (
+        <span className="text-gray-400">NULL</span>
+      ) : (
+        <div className="whitespace-pre-wrap">{contentStr}</div>
+      );
+    }
+
+    // For non-QA data, truncate as before
     const isLong = contentStr.length > 20;
 
     if (!isLong) {
@@ -197,12 +217,22 @@ export default function Query() {
   };
 
   // Render a data table from the results using shadcn/ui Table component
-  const ResultTable = ({ data }) => {
+  const ResultTable = ({ data, isQAResponse }) => {
     if (!data || data.length === 0)
       return <div className="text-gray-500">No results found</div>;
 
     const columns = Object.keys(data[0]);
 
+    // For QA responses, render a special version with full text
+    if (isQAResponse && columns.includes("output")) {
+      return (
+        <div className="w-full p-4 border rounded bg-white">
+          <div className="prose max-w-none">{data[0].output}</div>
+        </div>
+      );
+    }
+
+    // For regular database results, render the table
     return (
       <div className="w-full overflow-auto max-h-96 border rounded">
         <Table>
@@ -220,7 +250,10 @@ export default function Query() {
               <TableRow key={rowIndex}>
                 {columns.map((column, colIndex) => (
                   <TableCell key={colIndex} className="max-w-xs">
-                    <TruncatedCell content={row[column]} />
+                    <TruncatedCell
+                      content={row[column]}
+                      isQAColumn={isQAResponse && column === "output"}
+                    />
                   </TableCell>
                 ))}
               </TableRow>
@@ -352,17 +385,22 @@ export default function Query() {
                     )}
 
                     {/* Display general success message if no specific type is given */}
-                    {!message.sqlType && message.message && (
-                      <Alert className="mb-3 bg-green-50 border-green-200">
-                        <Check className="h-4 w-4 text-green-500" />
-                        <AlertDescription className="text-green-700">
-                          {message.message}
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                    {!message.sqlType &&
+                      message.message &&
+                      !message.isQAResponse && (
+                        <Alert className="mb-3 bg-green-50 border-green-200">
+                          <Check className="h-4 w-4 text-green-500" />
+                          <AlertDescription className="text-green-700">
+                            {message.message}
+                          </AlertDescription>
+                        </Alert>
+                      )}
 
                     {message.content && message.content.length > 0 && (
-                      <ResultTable data={message.content} />
+                      <ResultTable
+                        data={message.content}
+                        isQAResponse={message.isQAResponse}
+                      />
                     )}
                   </div>
                 )}

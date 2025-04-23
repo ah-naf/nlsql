@@ -17,6 +17,7 @@ import (
 )
 
 var destructiveRE = regexp.MustCompile(`(?i)^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)`)
+var dbOperationRE = regexp.MustCompile(`(?i)\b(table|database|column|row|insert|update|delete|drop|alter|create|select|from|where|join|schema)\b`)
 
 const deepseekURL = "https://api.together.xyz/v1/chat/completions"
 const MODEL_NAME = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -51,6 +52,9 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	defer db.Close()
 
+	// Pre-check: Is this likely a DB operation request?
+	isLikelyDBOperation := dbOperationRE.MatchString(req.Prompt)
+
 	// 1) Fetch table names and detect relevant ones
 	tableNames, err := getTables(db)
 	if err != nil {
@@ -71,9 +75,13 @@ func HandleNLQuery(c *gin.Context) {
 
 	// prepare a variable to hold the final SQL we will execute
 	var sqlQuery string
+	var isQAResponse bool = false
 
-	// 2) Fallback QA‐wrapped path
-	if strings.TrimSpace(detectorResp) == "!!" {
+	// 2) Determine if this is a DB operation or QA request
+	// Use the QA fallback ONLY if both conditions are true:
+	// 1. Detector sent the "!!" signal AND
+	// 2. The query doesn't look like a DB operation
+	if strings.TrimSpace(detectorResp) == "!!" && !isLikelyDBOperation {
 		qaMsgs := []Message{
 			{
 				Role: "system",
@@ -90,48 +98,73 @@ For example:
 			return
 		}
 		sqlQuery = strings.TrimSpace(ansSQL)
+		isQAResponse = true
 
 	} else {
 		// 3) Normal NL→SQL pipeline
 
-		// parse the comma‐list into []string
-		detectedTables := parseCSV(detectorResp)
-
-		// load the full schema
-		fullSchema, err := loadFullSchema(db)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
-			return
-		}
-
-		// filter to only the detected tables
-		relevantSchema := map[string]TableInfo{}
-		for _, tbl := range detectedTables {
-			if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
-				relevantSchema[tbl] = info
+		// For CREATE/DROP/ALTER operations with no specific tables mentioned
+		if isLikelyDBOperation && (strings.TrimSpace(detectorResp) == "!!" || strings.Contains(strings.ToLower(req.Prompt), "table")) {
+			// Load the full schema
+			fullSchema, err := loadFullSchema(db)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
+				return
 			}
-		}
 
-		// build and call the SQL‐generation LLM
-		sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
-		sqlMsgs := []Message{
-			{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
-			{Role: "user", Content: sqlPrompt},
+			sqlPrompt := buildSQLPrompt(fullSchema, req.Prompt)
+			sqlMsgs := []Message{
+				{Role: "system", Content: "You are an expert SQL assistant that can create, alter, drop and query tables. Convert natural language into SQL using the schema below."},
+				{Role: "user", Content: sqlPrompt},
+			}
+			llmSQL, err := connectLLM(sqlMsgs)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+				return
+			}
+			sqlQuery = strings.TrimSpace(llmSQL)
+		} else {
+			// parse the comma‐list into []string
+			detectedTables := parseCSV(detectorResp)
+
+			// load the full schema
+			fullSchema, err := loadFullSchema(db)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
+				return
+			}
+
+			// filter to only the detected tables
+			relevantSchema := map[string]TableInfo{}
+			for _, tbl := range detectedTables {
+				if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
+					relevantSchema[tbl] = info
+				}
+			}
+
+			// build and call the SQL‐generation LLM
+			sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
+			sqlMsgs := []Message{
+				{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
+				{Role: "user", Content: sqlPrompt},
+			}
+			llmSQL, err := connectLLM(sqlMsgs)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+				return
+			}
+			sqlQuery = strings.TrimSpace(llmSQL)
 		}
-		llmSQL, err := connectLLM(sqlMsgs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
-			return
-		}
-		sqlQuery = strings.TrimSpace(llmSQL)
 	}
 
 	// 4) Destructive check
 	if needsConfirmation(sqlQuery) && !req.Confirmed {
+		sqlType := getOperationType(sqlQuery)
 		c.JSON(http.StatusOK, gin.H{
 			"needs_confirmation": true,
 			"sql_preview":        sqlQuery,
-			"message":            "This query may modify your database. Please confirm before execution.",
+			"message":            fmt.Sprintf("This %s may modify your database. Please confirm before execution.", sqlType),
+			"sql_type":           sqlType,
 		})
 		return
 	}
@@ -140,7 +173,7 @@ For example:
 	rows, err := db.Query(sqlQuery)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "SQL execution failed",
+			"error": "SQL execution failed: " + err.Error(),
 			"sql":   sqlQuery,
 		})
 		return
@@ -149,6 +182,25 @@ For example:
 
 	cols, _ := rows.Columns()
 	result := []map[string]interface{}{}
+
+	// Check if this is a modification query by looking at statement type
+	sqlCmd := strings.TrimSpace(strings.ToUpper(sqlQuery))
+	isModification := strings.HasPrefix(sqlCmd, "INSERT") ||
+		strings.HasPrefix(sqlCmd, "UPDATE") ||
+		strings.HasPrefix(sqlCmd, "DELETE") ||
+		strings.HasPrefix(sqlCmd, "CREATE") ||
+		strings.HasPrefix(sqlCmd, "DROP") ||
+		strings.HasPrefix(sqlCmd, "ALTER")
+
+	// Get affected rows info
+	var affected int64 = 0
+	if isModification {
+		if ra, err := getAffectedRows(db); err == nil {
+			affected = ra
+		}
+	}
+
+	// Process result rows
 	for rows.Next() {
 		ptrs := make([]interface{}, len(cols))
 		vals := make([]interface{}, len(cols))
@@ -165,10 +217,31 @@ For example:
 		result = append(result, row)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	// Build response
+	response := gin.H{
 		"sql":          sqlQuery,
 		"result_table": result,
-	})
+	}
+
+	// Add sql_type and affected for modification queries
+	if isModification {
+		response["sql_type"] = getOperationType(sqlQuery)
+		response["affected"] = affected
+		response["message"] = fmt.Sprintf("%s completed. %d rows affected.", getOperationType(sqlQuery), affected)
+	}
+
+	// Add QA flag if this was a QA response
+	if isQAResponse {
+		response["is_qa"] = true
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func getAffectedRows(db *sql.DB) (int64, error) {
+	var affected int64
+	err := db.QueryRow("SELECT pg_affected_rows()").Scan(&affected)
+	return affected, err
 }
 
 func connectLLM(messages []Message) (string, error) {
@@ -281,6 +354,8 @@ func buildSQLPrompt(schema map[string]TableInfo, userQuery string) string {
 You are a SQL expert. Given the schema and user request below, generate a valid SQL query.
 Only return the SQL. Do not explain anything. Do not format the sql. Give it in raw text.
 
+For CREATE TABLE operations, use appropriate data types and constraints.
+
 ### Schema
 %s
 
@@ -299,7 +374,8 @@ You are given a list of table names:
 
 %s
 
-Based on the user's request, return only the **relevant table names** from the list above. 
+Based on the user's request, return only the **relevant table names** from the list above.
+If the user wants to create a new table or perform operations not related to specific existing tables, return "!!".
 Do not include any descriptions or explanations. Only output the table names as a comma-separated list.
 
 ### Request
