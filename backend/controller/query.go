@@ -42,24 +42,6 @@ type ResponseBody struct {
 	History           []Message                `json:"history,omitempty"`
 }
 
-func buildTableDetectionPrompt(tableNames []string, query string) string {
-	return fmt.Sprintf(`
-You are a database schema assistant.
-
-You are given a list of table names:
-
-%s
-
-Based on the user's request, return only the **relevant table names** from the list above. 
-Do not include any descriptions or explanations. Only output the table names as a comma-separated list.
-
-### Request
-%s
-
-### Output (comma-separated table names only)
-`, strings.Join(tableNames, ", "), query)
-}
-
 func HandleNLQuery(c *gin.Context) {
 	var req struct {
 		Config DBRequest `json:"config"`
@@ -134,9 +116,49 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
+	sqlQuery := strings.TrimSpace(sqlResult)
+
+	// Step 5: Execute the SQL query
+	rows, err := db.Query(sqlQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "SQL execution failed",
+			"sql":        sqlQuery,
+			"raw_output": sqlResult,
+			"llm_tables": detectedTables,
+		})
+		return
+	}
+	defer rows.Close()
+
+	// Step 6: Convert query result into []map[string]interface{}
+	columns, _ := rows.Columns()
+	result := []map[string]interface{}{}
+
+	for rows.Next() {
+		columnPointers := make([]interface{}, len(columns))
+		columnValues := make([]interface{}, len(columns))
+
+		for i := range columnPointers {
+			columnPointers[i] = &columnValues[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			continue
+		}
+
+		rowMap := make(map[string]interface{})
+		for i, colName := range columns {
+			val := columnValues[i]
+			rowMap[colName] = val
+		}
+
+		result = append(result, rowMap)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"tables_used": detectedTables,
-		"sql":         sqlResult,
+		"sql":          sqlResult,
+		"result_table": result,
 	})
 }
 
@@ -248,7 +270,7 @@ func buildSQLPrompt(schema map[string]TableInfo, userQuery string) string {
 
 	return fmt.Sprintf(`
 You are a SQL expert. Given the schema and user request below, generate a valid SQL query.
-Only return the SQL. Do not explain anything.
+Only return the SQL. Do not explain anything. Do not format the sql. Give it in raw text.
 
 ### Schema
 %s
@@ -258,4 +280,22 @@ Only return the SQL. Do not explain anything.
 
 ### SQL
 `, sb.String(), userQuery)
+}
+
+func buildTableDetectionPrompt(tableNames []string, query string) string {
+	return fmt.Sprintf(`
+You are a database schema assistant.
+
+You are given a list of table names:
+
+%s
+
+Based on the user's request, return only the **relevant table names** from the list above. 
+Do not include any descriptions or explanations. Only output the table names as a comma-separated list.
+
+### Request
+%s
+
+### Output (comma-separated table names only)
+`, strings.Join(tableNames, ", "), query)
 }
