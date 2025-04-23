@@ -83,12 +83,14 @@ func HandleNLQuery(c *gin.Context) {
 	}
 	defer db.Close()
 
+	// STEP 1: Get all table names
 	tableNames, err := getTables(db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Table name error: " + err.Error()})
 		return
 	}
 
+	// STEP 2: Ask LLM to detect relevant tables
 	prompt := buildTableDetectionPrompt(tableNames, req.Prompt)
 	llmMessages := []Message{
 		{Role: "system", Content: "You are a helpful assistant that selects only relevant table names from a schema list."},
@@ -101,8 +103,40 @@ func HandleNLQuery(c *gin.Context) {
 		return
 	}
 
+	// STEP 3: Parse LLM output into []string
+	detectedTables := parseCSV(response) // e.g. "users, courses" → ["users", "courses"]
+
+	// STEP 4: Load full schema
+	fullSchema, err := loadFullSchema(db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load error: " + err.Error()})
+		return
+	}
+
+	// STEP 5: Filter schema to only relevant tables
+	relevantSchema := map[string]TableInfo{}
+	for _, tbl := range detectedTables {
+		if info, ok := fullSchema[strings.TrimSpace(tbl)]; ok {
+			relevantSchema[tbl] = info
+		}
+	}
+
+	// STEP 6: Generate prompt to ask LLM for SQL
+	sqlPrompt := buildSQLPrompt(relevantSchema, req.Prompt)
+	sqlMessages := []Message{
+		{Role: "system", Content: "You are an expert SQL assistant. Convert natural language into SQL using the schema below."},
+		{Role: "user", Content: sqlPrompt},
+	}
+
+	sqlResult, err := connectLLM(sqlMessages)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "LLM error during SQL generation: " + err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"tables_used": response, 
+		"tables_used": detectedTables,
+		"sql":         sqlResult,
 	})
 }
 
@@ -189,4 +223,39 @@ func loadEnv() {
 	if err != nil {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
+}
+
+func parseCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, ".\n") // remove trailing dot or newline
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func buildSQLPrompt(schema map[string]TableInfo, userQuery string) string {
+	var sb strings.Builder
+
+	for table, info := range schema {
+		sb.WriteString(fmt.Sprintf("Table: %s\n", table))
+		for _, col := range info.Columns {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", col.Name, col.DataType))
+		}
+		sb.WriteString("\n")
+	}
+
+	return fmt.Sprintf(`
+You are a SQL expert. Given the schema and user request below, generate a valid SQL query.
+Only return the SQL. Do not explain anything.
+
+### Schema
+%s
+
+### Request
+%s
+
+### SQL
+`, sb.String(), userQuery)
 }
