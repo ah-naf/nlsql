@@ -208,27 +208,10 @@ func HandleNLQuery(c *gin.Context) {
 			return
 		}
 	} else {
-		rows, err := conn.Query(sqlQuery)
+		results, err = db.ExecuteQuery(conn, sqlQuery)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Query failed: " + err.Error(), "sql": sqlQuery})
 			return
-		}
-		defer rows.Close()
-		cols, _ := rows.Columns()
-		for rows.Next() {
-			vals := make([]interface{}, len(cols))
-			ptrs := make([]interface{}, len(cols))
-			for i := range ptrs {
-				ptrs[i] = &vals[i]
-			}
-			if err := rows.Scan(ptrs...); err != nil {
-				continue
-			}
-			row := map[string]interface{}{}
-			for i, n := range cols {
-				row[n] = vals[i]
-			}
-			results = append(results, row)
 		}
 	}
 
