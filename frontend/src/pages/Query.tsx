@@ -1,79 +1,18 @@
-import React, { useRef, useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Loader2,
-  Check,
-  Code,
-  AlertTriangle,
-  Database,
-  PlayCircle,
-} from "lucide-react";
-import SchemaSidebar from "@/components/SchemaSidebar";
-import axios from "axios";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+// src/pages/Query.tsx
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-
-// Define types for clarity and TypeScript compatibility
-interface DBConfig {
-  host: string;
-  port: string;
-  user: string;
-  pass: string;
-  dbname: string;
-}
-
-interface ConfirmationDialog {
-  open: boolean;
-  sql: string;
-  pendingQuery: string;
-}
-
-interface ResultItem {
-  type: "user" | "assistant";
-  content?: any[];
-  responseType?: "success" | "error";
-  message?: string;
-  sql?: string;
-  sqlType?: string;
-  affectedRows?: number;
-  isQAResponse?: boolean;
-  extractedSql?: string | null;
-}
-
-interface TableCellProps {
-  content: any;
-  isQAColumn: boolean;
-}
-
-interface ResultTableProps {
-  data: any[];
-  isQAResponse?: boolean;
-  extractedSql?: string | null;
-  messageIndex: number;
-}
+import SchemaSidebar from "@/components/SchemaSidebar";
+import QueryHeader from "@/components/QueryHeader";
+import QueryInput from "@/components/QueryInput";
+import ChatContainer from "@/components/ChatContainer";
+import SqlConfirmationDialog from "@/components/SqlConfirmationDialog";
+import { DBConfig, ConfirmationDialog, ResultItem } from "../types/query";
+import {
+  extractSqlFromQaOutput,
+  sendQueryToBackend,
+  getSessionId,
+  resetSessionId,
+} from "../utils/dbUtils";
 
 export default function Query() {
   const navigate = useNavigate();
@@ -85,11 +24,7 @@ export default function Query() {
   const [activeCodeIndex, setActiveCodeIndex] = useState<number | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldReRender, setShouldReRender] = useState<boolean>(false);
-
-  // Add state for session ID
   const [sessionId, setSessionId] = useState<string>("");
-
-  // New state for confirmation dialog
   const [confirmationDialog, setConfirmationDialog] =
     useState<ConfirmationDialog>({
       open: false,
@@ -97,9 +32,12 @@ export default function Query() {
       pendingQuery: "",
     });
 
+  // Load database configuration
   const dbConfig = JSON.parse(
     localStorage.getItem("dbConfig") || "null"
   ) as DBConfig | null;
+
+  // Redirect if no database config
   if (!dbConfig || !dbConfig.dbname) {
     navigate("/");
     return null;
@@ -107,50 +45,31 @@ export default function Query() {
 
   // Initialize session ID on component mount
   useEffect(() => {
-    // Generate a session ID based on DB connection details
-    const generatedSessionId = `${dbConfig.dbname}-${Date.now()}`;
-
-    // Check if there's a stored session ID for this database
-    const storedSessionId = localStorage.getItem(
-      `sessionId-${dbConfig.dbname}`
-    );
-
-    // Use stored session ID if available, otherwise use the new one
-    const activeSessionId = storedSessionId || generatedSessionId;
-
-    // Store the session ID
-    if (!storedSessionId) {
-      localStorage.setItem(`sessionId-${dbConfig.dbname}`, activeSessionId);
-    }
-
+    const activeSessionId = getSessionId(dbConfig.dbname);
     setSessionId(activeSessionId);
   }, [dbConfig.dbname]);
 
-  // Function to extract SQL from QA output's SELECT statement
-  const extractSqlFromQaOutput = (output: string): string | null => {
-    if (!output) return null;
-
-    // Check for pattern: SELECT '...' AS output
-    const selectMatch = output.match(/SELECT\s+'(.+?)'\s+AS\s+output/i);
-    if (selectMatch && selectMatch[1]) {
-      // Unescape single quotes in the SQL
-      return selectMatch[1].replace(/''/g, "'");
+  // Function to toggle code view
+  const toggleCodeView = (index: number): void => {
+    if (activeCodeIndex === index) {
+      setActiveCodeIndex(null); // Hide code if already showing
+    } else {
+      setActiveCodeIndex(index); // Show code for this message
     }
-    return null;
   };
 
-  // Function to execute extracted SQL
+  // Execute extracted SQL from QA response
   const executeExtractedSql = async (sql: string): Promise<void> => {
     try {
       setLoading(true);
 
-      const response = await axios.post("http://localhost:8080/query", {
-        config: dbConfig,
-        prompt: "Execute this SQL directly",
-        confirmed: true,
-        sqlToConfirm: sql,
-        sessionId: sessionId,
-      });
+      const response = await sendQueryToBackend(
+        dbConfig,
+        "Execute this SQL directly",
+        true,
+        sql,
+        sessionId
+      );
 
       const data = response.data;
 
@@ -207,16 +126,21 @@ export default function Query() {
       ]);
     } finally {
       setLoading(false);
-
-      setTimeout(() => {
-        chatContainerRef.current?.scrollTo({
-          top: chatContainerRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }, 100);
+      scrollToBottom();
     }
   };
 
+  // Scroll chat to bottom
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      chatContainerRef.current?.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 100);
+  };
+
+  // Send query to backend
   const sendQuery = async (confirmed = false): Promise<void> => {
     if (!query.trim() && !confirmed) return;
 
@@ -239,13 +163,13 @@ export default function Query() {
         ]);
       }
 
-      const response = await axios.post("http://localhost:8080/query", {
-        config: dbConfig,
-        prompt: queryToSend,
-        confirmed: confirmed,
-        sqlToConfirm: confirmed ? confirmationDialog.sql : "",
-        sessionId: sessionId, // Include the session ID with each request
-      });
+      const response = await sendQueryToBackend(
+        dbConfig,
+        queryToSend,
+        confirmed,
+        confirmed ? confirmationDialog.sql : "",
+        sessionId
+      );
 
       const data = response.data;
 
@@ -270,7 +194,7 @@ export default function Query() {
       let resultContent: any[] = [];
       let resultMessage = "";
 
-      // Check if this is a QA response - if there's only one row with one column named "output"
+      // Check if this is a QA response
       const isQAResponse =
         data.result_table &&
         data.result_table.length === 1 &&
@@ -334,34 +258,26 @@ export default function Query() {
       ]);
     } finally {
       setLoading(false);
-
-      setTimeout(() => {
-        chatContainerRef.current?.scrollTo({
-          top: chatContainerRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }, 100);
+      scrollToBottom();
     }
   };
 
+  // Confirm and execute SQL
   const confirmAndSendQuery = (): void => {
     setConfirmationDialog((prev) => ({ ...prev, open: false }));
     sendQuery(true);
   };
 
+  // Cancel query
   const cancelQuery = (): void => {
     setConfirmationDialog({ open: false, sql: "", pendingQuery: "" });
     setLoading(false);
   };
 
-  // Add function to reset conversation history
+  // Reset conversation
   const resetConversation = (): void => {
-    // Clear the current session ID in localStorage
-    localStorage.removeItem(`sessionId-${dbConfig.dbname}`);
-
-    // Generate a new session ID
-    const newSessionId = `${dbConfig.dbname}-${Date.now()}`;
-    localStorage.setItem(`sessionId-${dbConfig.dbname}`, newSessionId);
+    // Reset the session ID
+    const newSessionId = resetSessionId(dbConfig.dbname);
     setSessionId(newSessionId);
 
     // Clear the conversation UI
@@ -369,132 +285,6 @@ export default function Query() {
 
     // Show confirmation
     alert("Conversation history has been reset.");
-  };
-
-  // Truncate long text and show in tooltip for database content
-  // But display full text for QA responses
-  const TruncatedCell: React.FC<TableCellProps> = ({ content, isQAColumn }) => {
-    const contentStr = content === null ? "NULL" : String(content);
-
-    // Always show full text for QA responses in the "output" column
-    if (isQAColumn) {
-      return content === null ? (
-        <span className="text-gray-400">NULL</span>
-      ) : (
-        <div className="whitespace-pre-wrap">{contentStr}</div>
-      );
-    }
-
-    // For non-QA data, truncate as before
-    const isLong = contentStr.length > 20;
-
-    if (!isLong) {
-      return content === null ? (
-        <span className="text-gray-400">NULL</span>
-      ) : (
-        <>{contentStr}</>
-      );
-    }
-
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="cursor-help">
-              {contentStr.substring(0, 20)}...
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-md">
-            <p className="break-words">{contentStr}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
-
-  // Render a data table from the results using shadcn/ui Table component
-  const ResultTable: React.FC<ResultTableProps> = ({
-    data,
-    isQAResponse = false,
-    extractedSql = null,
-    messageIndex,
-  }) => {
-    if (!data || data.length === 0)
-      return <div className="text-gray-500">No results found</div>;
-
-    const columns = Object.keys(data[0]);
-
-    // For QA responses with embedded SQL, show a special UI
-    if (isQAResponse && columns.includes("output") && extractedSql) {
-      return (
-        <div className="w-full border rounded bg-white">
-          <div className="p-4 border-b">
-            <div className="prose max-w-none mb-2">
-              <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto">
-                {extractedSql}
-              </pre>
-            </div>
-            <div className="flex justify-end mt-2">
-              <Button
-                onClick={() => executeExtractedSql(extractedSql)}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <PlayCircle className="h-4 w-4 mr-2" />
-                Execute SQL
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // For QA responses, render a special version with full text
-    else if (isQAResponse && columns.includes("output")) {
-      return (
-        <div className="w-full p-4 border rounded bg-white">
-          <div className="prose max-w-none">{data[0].output}</div>
-        </div>
-      );
-    }
-
-    // For regular database results, render the table
-    return (
-      <div className="w-full overflow-auto max-h-96 border rounded">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((column, i) => (
-                <TableHead key={i} className="bg-gray-50">
-                  {column}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {columns.map((column, colIndex) => (
-                  <TableCell key={colIndex} className="max-w-xs">
-                    <TruncatedCell
-                      content={row[column]}
-                      isQAColumn={isQAResponse && column === "output"}
-                    />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
-
-  const toggleCodeView = (index: number): void => {
-    if (activeCodeIndex === index) {
-      setActiveCodeIndex(null); // Hide code if already showing
-    } else {
-      setActiveCodeIndex(index); // Show code for this message
-    }
   };
 
   return (
@@ -510,208 +300,33 @@ export default function Query() {
           showSidebar ? "w-[calc(100%-25rem)]" : "w-full"
         }`}
       >
-        <header className="border-b p-4 bg-white flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800">NL → SQL Chat</h1>
-          <div className="flex gap-2 items-center">
-            <Button
-              className={`xl:hidden ${
-                showSidebar
-                  ? "bg-yellow-500 hover:bg-yellow-600"
-                  : "bg-blue-500 hover:bg-blue-600"
-              } text-white`}
-              onClick={() => setShowSidebar(!showSidebar)}
-            >
-              {showSidebar ? "Hide Schema" : "Show Schema"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={resetConversation}
-              className="text-gray-700"
-            >
-              New Chat
-            </Button>
-            <Button
-              className="bg-gray-700 hover:bg-gray-800 text-white"
-              onClick={() => navigate("/")}
-            >
-              Change DB
-            </Button>
-          </div>
-        </header>
+        <QueryHeader
+          showSidebar={showSidebar}
+          setShowSidebar={setShowSidebar}
+          resetConversation={resetConversation}
+        />
 
-        <main
-          ref={chatContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100/50"
-        >
-          {results.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-center text-gray-600 text-lg">
-              👋 Welcome! Ask something about your database to get started.
-            </div>
-          ) : (
-            results.map((message, i) => (
-              <div
-                key={i}
-                className={`${
-                  message.type === "user"
-                    ? "w-fit px-4 py-2 rounded-lg bg-blue-600 text-white self-end ml-auto"
-                    : "max-w-[95%] px-4 py-3 rounded-lg bg-white text-gray-800 shadow"
-                }`}
-              >
-                {message.type === "user" ? (
-                  message.message || ""
-                ) : message.responseType === "error" ? (
-                  <div>
-                    <Alert className="mb-3 bg-red-50 border-red-200">
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                      <AlertDescription className="text-red-700">
-                        {message.message}
-                      </AlertDescription>
-                    </Alert>
+        <ChatContainer
+          chatContainerRef={chatContainerRef}
+          results={results}
+          activeCodeIndex={activeCodeIndex}
+          toggleCodeView={toggleCodeView}
+          onExecuteSql={executeExtractedSql}
+        />
 
-                    {message.sql && (
-                      <div className="mb-3 relative">
-                        <h4 className="font-medium text-gray-700 mb-2">
-                          Failed SQL:
-                        </h4>
-                        <div className="relative">
-                          <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto pr-10">
-                            {message.sql}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="font-medium text-gray-700">Results:</h4>
-                      {message.sql && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-gray-600"
-                          onClick={() => toggleCodeView(i)}
-                        >
-                          <Code size={16} className="mr-1" />
-                          {activeCodeIndex === i ? "Hide SQL" : "Show SQL"}
-                        </Button>
-                      )}
-                    </div>
-
-                    {activeCodeIndex === i && message.sql && (
-                      <div className="mb-3 relative">
-                        <div className="relative">
-                          <pre className="bg-gray-100 p-3 rounded font-mono text-sm overflow-x-auto pr-10">
-                            {message.sql}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Display operation result message for modification queries */}
-                    {message.sqlType && message.affectedRows !== undefined && (
-                      <Alert className="mb-3 bg-blue-50 border-blue-200">
-                        <Database className="h-4 w-4 text-blue-500" />
-                        <AlertDescription>{message.message}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    {/* Display general success message if no specific type is given */}
-                    {!message.sqlType &&
-                      message.message &&
-                      !message.isQAResponse && (
-                        <Alert className="mb-3 bg-green-50 border-green-200">
-                          <Check className="h-4 w-4 text-green-500" />
-                          <AlertDescription className="text-green-700">
-                            {message.message}
-                          </AlertDescription>
-                        </Alert>
-                      )}
-
-                    {message.content && message.content.length > 0 && (
-                      <ResultTable
-                        data={message.content}
-                        isQAResponse={message.isQAResponse}
-                        extractedSql={message.extractedSql}
-                        messageIndex={i}
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </main>
-
-        <footer className="p-4 border-t bg-white">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendQuery();
-            }}
-            className="flex gap-2"
-          >
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type your question about the data..."
-              className="flex-1"
-            />
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <Loader2 className="animate-spin mr-2" size={16} />
-              ) : null}{" "}
-              Send
-            </Button>
-          </form>
-        </footer>
+        <QueryInput
+          query={query}
+          setQuery={setQuery}
+          loading={loading}
+          onSubmit={() => sendQuery()}
+        />
       </div>
 
-      {/* SQL Confirmation Dialog */}
-      <Dialog
-        open={confirmationDialog.open}
-        onOpenChange={(open) => {
-          if (!open) cancelQuery();
-          setConfirmationDialog((prev) => ({ ...prev, open }));
-        }}
-      >
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center text-amber-600">
-              <AlertTriangle className="h-5 w-5 mr-2" /> Confirmation Required
-            </DialogTitle>
-            <DialogDescription>
-              You are about to execute a query that will modify your database.
-              Please review the SQL before proceeding.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="bg-amber-50 p-4 rounded border border-amber-200 my-4 overflow-auto">
-            <h4 className="font-semibold text-amber-800 mb-2">SQL Query:</h4>
-            <pre className="bg-white p-3 rounded font-mono text-sm overflow-x-auto border border-amber-100">
-              {confirmationDialog.sql}
-            </pre>
-          </div>
-
-          <DialogFooter className="flex justify-between sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={cancelQuery}
-              className="mt-2 sm:mt-0"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="bg-amber-600 hover:bg-amber-700 mt-2 sm:mt-0"
-              onClick={confirmAndSendQuery}
-            >
-              Confirm and Execute
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SqlConfirmationDialog
+        confirmationDialog={confirmationDialog}
+        onConfirm={confirmAndSendQuery}
+        onCancel={cancelQuery}
+      />
     </div>
   );
 }
