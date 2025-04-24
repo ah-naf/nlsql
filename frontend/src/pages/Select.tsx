@@ -95,7 +95,7 @@ export default function Select() {
     if (!dbConfig) return navigate("/");
     dbConfig.dbname = selected;
     localStorage.setItem("dbConfig", JSON.stringify(dbConfig));
-    navigate("/query");
+    window.location.href = "/query";
   };
 
   return (
@@ -151,8 +151,10 @@ export default function Select() {
           <div className="flex justify-between gap-2">
             <Button
               variant="secondary"
-              onClick={() => {
-                localStorage.clear();
+              onClick={(e) => {
+                e.preventDefault();
+                localStorage.removeItem("dbConfig");
+                localStorage.removeItem("databases");
                 window.location.href = "/";
               }}
             >

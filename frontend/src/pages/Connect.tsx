@@ -36,7 +36,7 @@ export default function Connect() {
       console.log(res);
       localStorage.setItem("dbConfig", JSON.stringify(form));
       localStorage.setItem("databases", JSON.stringify(res.data.databases));
-      navigate("/select");
+      window.location.href = "/select";
     } catch (err: any) {
       setError(err.response?.data?.error || "Connection failed");
     }

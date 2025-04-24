@@ -532,7 +532,7 @@ export default function Query() {
             </Button>
             <Button
               className="bg-gray-700 hover:bg-gray-800 text-white"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/select")}
             >
               Change DB
             </Button>
