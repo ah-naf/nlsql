@@ -1,63 +1,12 @@
 // components/SchemaSidebar.tsx
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
-import {
-  ChevronDown,
-  Table,
-  Database,
-  AlertCircle,
-  ChevronRight,
-  Key,
-  Link,
-  Info,
-  Hash,
-} from "lucide-react";
-import {
-  useEffect,
-  useState,
-  useCallback,
-  Dispatch,
-  SetStateAction,
-} from "react";
-
-type BriefTable = {
-  name: string;
-  row_count: number;
-};
-
-type ColumnInfo = {
-  name: string;
-  data_type: string;
-  is_nullable: boolean;
-  default_value: { String: string; Valid: boolean };
-  is_primary_key: boolean;
-  is_unique: boolean;
-  foreign_table: { String: string; Valid: boolean };
-  foreign_column: { String: string; Valid: boolean };
-  description: { String: string; Valid: boolean };
-};
-
-type TableInfo = {
-  name: string;
-  columns: ColumnInfo[];
-  description: { String: string; Valid: boolean };
-  row_count: number;
-};
-
-type DatabaseSchema = {
-  [tableName: string]: TableInfo;
-};
+import { Database } from "lucide-react";
+import { TableSearch } from "./schema/TableSearch";
+import { TableItem } from "./schema/TableItem";
+import { BriefTable, DatabaseSchema, TableInfo } from "@/types/schema";
+import { EmptyState, ErrorState } from "./schema/utils";
 
 type SchemaSidebarProps = {
   shouldReRender: boolean;
@@ -70,8 +19,9 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   const [openTable, setOpenTable] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>("");
-  const [visibleCount, setVisibleCount] = useState<number>(20);
   const [schemaError, setSchemaError] = useState("");
+  const parentRef = useRef<HTMLDivElement>(null);
+  const itemHeights = useRef<Record<string, number>>({});
 
   useEffect(() => {
     (async () => {
@@ -88,23 +38,36 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
     })();
   }, [shouldReRender]);
 
-  const filtered = briefTables.filter((t) =>
-    t.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
-  const visible = filtered.slice(0, visibleCount);
+  const filtered = useMemo(() => {
+    return briefTables.filter((t) =>
+      t.name.toLowerCase().includes(search.trim().toLowerCase())
+    );
+  }, [briefTables, search]);
 
-  const handleScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+  // Create virtualizer with dynamic size estimation
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const table = filtered[index];
+      return table ? itemHeights.current[table.name] || 60 : 60;
+    },
+    overscan: 5,
+    getItemKey: (index) => filtered[index]?.name || `item-${index}`,
+  });
 
-      if (
-        scrollHeight - scrollTop <= clientHeight + 20 &&
-        visibleCount < filtered.length
-      ) {
-        setVisibleCount((v) => Math.min(v + 20, filtered.length));
+  // Handle measurement of expanded items
+  const measureElement = useCallback(
+    (element: HTMLElement | null, tableName: string) => {
+      if (element) {
+        const height = element.getBoundingClientRect().height;
+        if (itemHeights.current[tableName] !== height) {
+          itemHeights.current[tableName] = height;
+          virtualizer.measure();
+        }
       }
     },
-    [filtered.length, visibleCount]
+    [virtualizer]
   );
 
   const handleToggle = async (tableName: string, isOpen: boolean) => {
@@ -112,206 +75,77 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       setOpenTable(tableName);
       if (!fullSchema[tableName]) {
         try {
-          setError("");
+          setSchemaError("");
           const res = await axios.get<{ table: TableInfo }>(
             `http://localhost:8080/schema/${tableName}`,
             { params: dbConfig }
           );
           setFullSchema((fs) => ({ ...fs, [tableName]: res.data.table }));
+
+          virtualizer.measure();
         } catch (e: any) {
           console.error("Failed to load table:", e);
           setSchemaError(e.response?.data?.error || e.message);
-          setFullSchema({});
         }
       }
     } else {
       setOpenTable(null);
+
+      itemHeights.current[tableName] = 60;
+      virtualizer.measure();
     }
   };
 
-  const getColumnIcon = (col: ColumnInfo) =>
-    col.is_primary_key ? (
-      <Key size={14} className="text-yellow-500" />
-    ) : col.is_unique ? (
-      <Hash size={14} className="text-blue-500" />
-    ) : col.foreign_table.Valid ? (
-      <Link size={14} className="text-green-600" />
-    ) : null;
-
-  const getColumnTooltip = (col: ColumnInfo) =>
-    col.is_primary_key
-      ? "Primary Key"
-      : col.is_unique
-      ? "Unique Constraint"
-      : col.foreign_table.Valid
-      ? `Foreign Key → ${col.foreign_table.String}.${col.foreign_column.String}`
-      : col.description.Valid
-      ? col.description.String
-      : "";
-
-  // Render
   return (
-    <aside className="w-[25rem] flex flex-col h-full border-r bg-white shadow">
+    <aside className="w-96 flex flex-col h-full border-r bg-white shadow">
       <div className="p-4 py-5 border-b bg-gray-50">
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
           <Database size={20} className="text-indigo-600" />
           {dbConfig?.dbname || "Database Schema"}
         </h2>
-        <input
-          type="search"
-          placeholder="🔍 Search tables..."
-          className="mt-3 w-full px-2 py-1 border rounded text-sm"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setVisibleCount(20);
-          }}
-        />
+        <TableSearch search={search} setSearch={setSearch} />
       </div>
 
-      <ScrollArea
-        className="flex-1 px-3 pt-2 pb-8 overflow-y-auto"
-        onScrollCapture={handleScroll}
-      >
+      <div ref={parentRef} className="flex-1 overflow-auto px-2">
         {error ? (
-          <div className="mt-20 px-6 text-center text-red-500">
-            <AlertCircle size={48} className="mx-auto mb-4 text-red-400" />
-            <p className="font-semibold">{error}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              Check your connection or credentials.
-            </p>
-          </div>
-        ) : visible.length === 0 ? (
-          <div className="mt-20 px-6 text-center text-gray-500">
-            <Database size={48} className="mx-auto mb-4 text-indigo-300" />
-            <p className="font-medium">No tables found.</p>
-          </div>
+          <ErrorState error={error} />
+        ) : filtered.length === 0 ? (
+          <EmptyState />
         ) : (
-          visible.map(({ name, row_count }) => {
-            const isOpen = openTable === name;
-            const table = fullSchema[name];
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const table = filtered[virtualItem.index];
+              const isOpen = openTable === table.name;
+              const tableData = fullSchema[table.name];
 
-            return (
-              <Collapsible
-                key={name}
-                open={isOpen}
-                onOpenChange={(open) => handleToggle(name, open)}
-              >
-                <CollapsibleTrigger className="w-full px-3 py-3 mt-1 flex items-center justify-between border rounded-md bg-white hover:bg-gray-50 cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <Table size={16} className="text-indigo-600" />
-                    <span className="font-semibold text-gray-800">{name}</span>
-                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded-full text-gray-600">
-                      {row_count} rows
-                    </span>
+              return (
+                <div
+                  key={virtualItem.key}
+                  data-index={virtualItem.index}
+                  ref={(el) => measureElement(el, table.name)}
+                  className="absolute top-0 left-0 w-full"
+                  style={{
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <div className="py-1">
+                    <TableItem
+                      table={table}
+                      isOpen={isOpen}
+                      tableData={tableData}
+                      schemaError={schemaError}
+                      onToggle={handleToggle}
+                    />
                   </div>
-                  {isOpen ? (
-                    <ChevronDown size={16} className="text-gray-400" />
-                  ) : (
-                    <ChevronRight size={16} className="text-gray-400" />
-                  )}
-                </CollapsibleTrigger>
-
-                {table && (
-                  <CollapsibleContent className="px-2 pb-3">
-                    {schemaError && (
-                      <div className="mt-2 border rounded-md border-red-400 p-3 text-center text-red-500">
-                        <AlertCircle
-                          size={48}
-                          className="mx-auto mb-2 text-red-400"
-                        />
-                        <p>{schemaError}</p>
-                      </div>
-                    )}
-                    {/* Description */}
-                    {table.description.Valid && (
-                      <div className="px-3 py-2 text-sm text-gray-600 italic">
-                        {table.description.String}
-                      </div>
-                    )}
-
-                    {/* Columns */}
-                    <div className="border rounded-md overflow-hidden">
-                      <div className="px-3 py-2 text-xs font-medium uppercase bg-gray-50 text-gray-500 border-b">
-                        Columns
-                      </div>
-                      <ul className="text-sm divide-y">
-                        {table.columns.map((col, i) => (
-                          <li
-                            key={i}
-                            className="px-3 py-2 flex items-center hover:bg-gray-50"
-                          >
-                            <div className="flex-1 flex items-center gap-1.5">
-                              {getColumnIcon(col)}
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <span
-                                      className={
-                                        col.is_primary_key ? "font-medium" : ""
-                                      }
-                                    >
-                                      {col.name}
-                                    </span>
-                                  </TooltipTrigger>
-                                  {getColumnTooltip(col) && (
-                                    <TooltipContent>
-                                      {getColumnTooltip(col)}
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <span className="px-1.5 py-0.5 bg-gray-100 rounded-md">
-                                {col.data_type}
-                              </span>
-                              {!col.is_nullable && (
-                                <span className="text-red-500">required</span>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Foreign Keys */}
-                    <div className="border rounded-md mt-2 overflow-hidden">
-                      <div className="px-3 py-2 text-xs font-medium uppercase bg-gray-50 text-gray-500 border-b">
-                        Foreign Keys
-                      </div>
-                      <ul className="text-sm divide-y">
-                        {table.columns
-                          .filter((c) => c.foreign_table.Valid)
-                          .map((c, i) => (
-                            <li
-                              key={i}
-                              className="px-3 py-2 flex items-center justify-between hover:bg-gray-50"
-                            >
-                              <div className="flex items-center gap-1">
-                                <Link size={14} className="text-green-600" />
-                                <span>
-                                  {c.name} ⟶ {c.foreign_table.String}.
-                                  {c.foreign_column.String}
-                                </span>
-                              </div>
-                            </li>
-                          ))}
-                        {table.columns.filter((c) => c.foreign_table.Valid)
-                          .length === 0 && (
-                          <li className="px-3 py-2 text-xs text-gray-500">
-                            None
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  </CollapsibleContent>
-                )}
-              </Collapsible>
-            );
-          })
+                </div>
+              );
+            })}
+          </div>
         )}
-      </ScrollArea>
+      </div>
     </aside>
   );
 }
