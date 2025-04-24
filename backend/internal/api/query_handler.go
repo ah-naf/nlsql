@@ -202,12 +202,11 @@ func HandleNLQuery(c *gin.Context) {
 	var affected int64
 
 	if isMod {
-		res, err := conn.Exec(sqlQuery)
+		affected, err = db.ExecuteModification(conn, sqlQuery)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Exec failed: " + err.Error(), "sql": sqlQuery})
 			return
 		}
-		affected, _ = res.RowsAffected()
 	} else {
 		rows, err := conn.Query(sqlQuery)
 		if err != nil {
