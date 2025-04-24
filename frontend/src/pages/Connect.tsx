@@ -3,17 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-
-interface DBForm {
-  host: string;
-  port: string;
-  user: string;
-  pass: string;
-  dbname: string;
-}
+import { DBConfig } from "@/types/query";
 
 export default function Connect() {
-  const [form, setForm] = useState<DBForm>({
+  const [form, setForm] = useState<DBConfig>({
     host: "",
     port: "",
     user: "",
@@ -56,7 +49,7 @@ export default function Connect() {
         )}
 
         <form className="space-y-5" onSubmit={handleSubmit}>
-          {(Object.keys(form) as (keyof DBForm)[]).map((key) => (
+          {(Object.keys(form) as (keyof DBConfig)[]).map((key) => (
             <div key={key} className="space-y-1">
               <label
                 htmlFor={key}
