@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 func ExecuteModification(ctx context.Context, conn *sql.DB, sqlQuery string) (int64, error) {
@@ -14,13 +15,17 @@ func ExecuteModification(ctx context.Context, conn *sql.DB, sqlQuery string) (in
 		return 0, fmt.Errorf("DROP DATABASE is not allowed")
 	}
 
-	tx, err := conn.BeginTx(ctx, nil)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	tx, err := conn.BeginTx(ctxWithTimeout, nil)
 	if err != nil {
 		return 0, err
 	}
 
 	done := make(chan struct{})
 	var affected int64
+	var execErr error
 
 	go func() {
 		defer close(done)
@@ -35,17 +40,17 @@ func ExecuteModification(ctx context.Context, conn *sql.DB, sqlQuery string) (in
 			return
 		}
 
-		err = tx.Commit()
+		execErr = tx.Commit()
 	}()
 
 	select {
-	case <-ctx.Done():
+	case <-ctxWithTimeout.Done():
 		tx.Rollback()
-		return 0, fmt.Errorf("request was cancelled: %w", ctx.Err())
+		return 0, fmt.Errorf("execution timeout or cancelled: %w", ctxWithTimeout.Err())
 	case <-done:
-		if err != nil {
+		if execErr != nil {
 			tx.Rollback()
-			return 0, err
+			return 0, execErr
 		}
 		return affected, nil
 	}
