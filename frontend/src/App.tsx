@@ -10,7 +10,6 @@ import Select from "./pages/Select";
 
 export default function App() {
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
-  console.log(dbConfig);
 
   return (
     <Router>

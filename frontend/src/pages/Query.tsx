@@ -19,7 +19,7 @@ export default function Query() {
   const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [results, setResults] = useState<ResultItem[]>([]);
-  const [sqlCode, setSqlCode] = useState<string>("");
+  // const [sqlCode, setSqlCode] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [activeCodeIndex, setActiveCodeIndex] = useState<number | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -240,7 +240,7 @@ export default function Query() {
         },
       ]);
 
-      setSqlCode(data.sql);
+      // setSqlCode(data.sql);
       setQuery("");
     } catch (err: any) {
       const errorMessage =

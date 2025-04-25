@@ -1,4 +1,4 @@
-import { Code, AlertTriangle, Database, Check } from "lucide-react";
+import { Code, AlertTriangle, Database } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import ResultTable from "./ResultTable";

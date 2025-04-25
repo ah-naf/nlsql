@@ -1,6 +1,9 @@
 package api
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,6 +23,29 @@ func SetupRouter() *gin.Engine {
 	// Schema introspection
 	r.GET("/schema", GetSchema)
 	r.GET("/schema/:tableName", GetTableSchema)
+
+	r.Static("/assets", "../frontend/dist/assets")
+
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		if c.Request.Method == "GET" && (path == "/" || path == "/select" || path == "/query") {
+			c.File("../frontend/dist/index.html")
+			return
+		}
+
+		if strings.Contains(path, ".") {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		if c.Request.Method == "GET" {
+			c.File("../frontend/dist/index.html")
+			return
+		}
+
+		c.JSON(http.StatusNotFound, gin.H{"error": "API endpoint not found"})
+	})
 
 	return r
 }
