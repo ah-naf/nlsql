@@ -1,5 +1,5 @@
 // components/SchemaSidebar.tsx
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
 import { Database } from "lucide-react";
@@ -48,12 +48,12 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => {
+    estimateSize: (index: number) => {
       const table = filtered[index];
       return table ? itemHeights.current[table.name] || 60 : 60;
     },
     overscan: 5,
-    getItemKey: (index) => filtered[index]?.name || `item-${index}`,
+    getItemKey: (index: number) => filtered[index]?.name || `item-${index}`,
   });
 
   // Handle measurement of expanded items
@@ -116,7 +116,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
             className="relative w-full"
             style={{ height: `${virtualizer.getTotalSize()}px` }}
           >
-            {virtualizer.getVirtualItems().map((virtualItem) => {
+            {virtualizer.getVirtualItems().map((virtualItem: VirtualItem) => {
               const table = filtered[virtualItem.index];
               const isOpen = openTable === table.name;
               const tableData = fullSchema[table.name];
