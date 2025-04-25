@@ -1,45 +1,54 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 )
 
-func ExecuteModification(conn *sql.DB, sqlQuery string) (int64, error) {
+func ExecuteModification(ctx context.Context, conn *sql.DB, sqlQuery string) (int64, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(sqlQuery))
 
 	if strings.HasPrefix(normalized, "DROP DATABASE") {
 		return 0, fmt.Errorf("DROP DATABASE is not allowed")
 	}
 
-	tx, err := conn.Begin()
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
+	done := make(chan struct{})
+	var affected int64
+
+	go func() {
+		defer close(done)
+		res, execErr := tx.ExecContext(ctx, sqlQuery)
+		if execErr != nil {
+			err = execErr
+			return
 		}
+
+		affected, err = res.RowsAffected()
+		if err != nil {
+			return
+		}
+
+		err = tx.Commit()
 	}()
 
-	res, err := tx.Exec(sqlQuery)
-	if err != nil {
-		return 0, err
+	select {
+	case <-ctx.Done():
+		tx.Rollback()
+		return 0, fmt.Errorf("request was cancelled: %w", ctx.Err())
+	case <-done:
+		if err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+		return affected, nil
 	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return 0, nil
-	}
-
-	return affected, nil
 }
 
 func ExecuteQuery(conn *sql.DB, sqlQuery string) ([]map[string]interface{}, error) {
