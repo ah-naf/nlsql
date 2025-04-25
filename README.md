@@ -45,11 +45,7 @@ A simple web application that lets you ask natural-language questions about your
 
 ## How It Works
 
-1. **Frontend (HTML/CSS/JS)**
-   - _query.html/query.js_: Handles user input, conversation history, AJAX calls, and renders chat bubbles and schema cards.
-   - _select.html_: Lists available databases and lets you create a new one.
-   - _favicon.svg_, _CSS_, and _JS_ live in `/static/`.
-2. **Backend (Go / Gin)**
+1. **Backend (Go / Gin)**
    - **Session Middleware** stores connection credentials.
    - **Handlers**:
      - `ShowConnectForm` / `ConnectDB` → initial Postgres connection.
@@ -57,7 +53,7 @@ A simple web application that lets you ask natural-language questions about your
      - `ShowQueryPage` → serve the chat interface with preloaded schema.
      - `HandleNLQuery` → bind JSON, rebuild prompt with schema, call Together AI LLM, return SQL preview, execute if `SELECT`, and refresh schema for DML.
    - **Schema Module** (`models/db.go`) inspects `information_schema` for columns, PK/FK metadata.
-3. **LLM Integration**
+2. **LLM Integration**
    - Uses Together AI’s API (`meta-llama/Llama-3.3-70B-Instruct-Turbo-Free` model) to translate English into SQL.
    - Requires an environment variable `LLM_API_KEY` with your Together AI API key.
 
@@ -76,6 +72,7 @@ A simple web application that lets you ask natural-language questions about your
 3. **Fetch dependencies**
 
    ```bash
+   cd backend
    go mod tidy
    ```
 
@@ -86,9 +83,16 @@ A simple web application that lets you ask natural-language questions about your
    LLM_API_KEY=your-together-ai-key
    ```
 
-5. **Run the server**
+5. **Setup Frontend**
    ```bash
-   go run main.go
+   cd frontend
+   npm install
+   npm run build
+   ```
+6. **Run the server**
+   ```bash
+   cd backend
+   go run cmd/main.go
    ```
    By default, the app listens on `http://localhost:8080`.
 
