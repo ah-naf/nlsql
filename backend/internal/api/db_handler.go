@@ -12,16 +12,20 @@ import (
 // GetDatabases handles GET /databases
 func GetDatabases(c *gin.Context) {
 	var req models.DBRequest
-	req.Host = c.Query("host")
-	req.Port = c.Query("port")
-	req.User = c.Query("user")
-	req.Pass = c.Query("pass")
-	req.DBName = c.Query("dbname")
+    req.Host = c.Query("host")
+    req.Port = c.Query("port")
+    req.User = c.Query("user")
+    req.Pass = c.Query("pass")
+    req.DBName = c.Query("dbname")
+    req.Provider = c.Query("provider")
+    req.SSLMode = c.Query("sslmode")
+    req.ConnectionString = c.Query("connectionString")
 
-	if req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required params"})
-		return
-	}
+	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
+        return
+    }
+	
 	conn, err := db.OpenConnection(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -94,6 +98,12 @@ func ConnectDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
+        return
+    }
+
 	conn, err := db.OpenConnection(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
