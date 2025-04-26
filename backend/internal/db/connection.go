@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 
 	"nlsql/internal/models"
