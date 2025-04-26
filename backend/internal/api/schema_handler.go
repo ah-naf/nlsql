@@ -1,3 +1,4 @@
+// api/schema_handler.go
 package api
 
 import (
@@ -17,11 +18,15 @@ func GetSchema(c *gin.Context) {
 	req.User = c.Query("user")
 	req.Pass = c.Query("pass")
 	req.DBName = c.Query("dbname")
+	req.Provider = c.Query("provider")
+	req.SSLMode = c.Query("sslmode")
+	req.ConnectionString = c.Query("connectionString")
 
-	if req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "" || req.DBName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required params"})
+	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
+
 	conn, err := db.OpenConnection(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -55,12 +60,17 @@ func GetTableSchema(c *gin.Context) {
 	req.User = c.Query("user")
 	req.Pass = c.Query("pass")
 	req.DBName = c.Query("dbname")
-	table := c.Param("tableName")
+	req.Provider = c.Query("provider")
+	req.SSLMode = c.Query("sslmode")
+	req.ConnectionString = c.Query("connectionString")
 
-	if req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "" || req.DBName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required params"})
+	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
+
+	table := c.Param("tableName")
+
 	conn, err := db.OpenConnection(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

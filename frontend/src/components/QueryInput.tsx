@@ -35,6 +35,9 @@ export default function QueryInput({
           Send
         </Button>
       </form>
+      <p className="text-center text-xs mt-2 text-gray-700 font-medium">
+        NLSQL is wouldn't give you 100% accurate query.
+      </p>
     </footer>
   );
 }

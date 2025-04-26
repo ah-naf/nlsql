@@ -1,5 +1,5 @@
 // src/pages/Query.tsx
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import SchemaSidebar from "@/components/SchemaSidebar";
 import QueryHeader from "@/components/QueryHeader";
@@ -208,11 +208,13 @@ export default function Query() {
       }
 
       if (data.result_table && data.result_table.length > 0) {
+        console.log("first");
         // For SELECT queries with data
         resultContent = data.result_table;
         resultMessage =
           data.message || `Query returned ${data.result_table.length} results`;
       } else if (data.affected !== undefined) {
+        console.log("second");
         // For modification queries with affected rows info
         setShouldReRender(!shouldReRender);
         resultContent = [];
@@ -220,6 +222,7 @@ export default function Query() {
           data.message ||
           `Operation completed. ${data.affected} rows affected.`;
       } else {
+        setShouldReRender(!shouldReRender);
         // Fallback for other cases
         resultContent = data.result_table || [];
         resultMessage = data.message || "Query executed successfully";
@@ -259,6 +262,7 @@ export default function Query() {
     } finally {
       setLoading(false);
       scrollToBottom();
+      setQuery("");
     }
   };
 
@@ -289,11 +293,9 @@ export default function Query() {
 
   return (
     <div className="flex h-screen">
-      {showSidebar && (
-        <div className="w-[25rem]">
-          <SchemaSidebar shouldReRender={shouldReRender} />
-        </div>
-      )}
+      <div className={`w-[25rem] ${showSidebar ? "block" : "hidden"}`}>
+        <SchemaSidebar shouldReRender={shouldReRender} />
+      </div>
 
       <div
         className={`flex-1 flex flex-col ${
@@ -312,6 +314,7 @@ export default function Query() {
           activeCodeIndex={activeCodeIndex}
           toggleCodeView={toggleCodeView}
           onExecuteSql={executeExtractedSql}
+          loading={loading}
         />
 
         <QueryInput

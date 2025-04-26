@@ -1,3 +1,4 @@
+// db/schema.go
 package db
 
 import (

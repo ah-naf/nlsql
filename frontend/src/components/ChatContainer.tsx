@@ -9,6 +9,7 @@ interface ChatContainerProps {
   activeCodeIndex: number | null;
   toggleCodeView: (index: number) => void;
   onExecuteSql: (sql: string) => void;
+  loading: boolean;
 }
 
 export default function ChatContainer({
@@ -17,6 +18,7 @@ export default function ChatContainer({
   activeCodeIndex,
   toggleCodeView,
   onExecuteSql,
+  loading,
 }: ChatContainerProps) {
   return (
     <main
@@ -28,16 +30,28 @@ export default function ChatContainer({
           👋 Welcome! Ask something about your database to get started.
         </div>
       ) : (
-        results.map((message, i) => (
-          <ChatMessage
-            key={i}
-            message={message}
-            index={i}
-            activeCodeIndex={activeCodeIndex}
-            toggleCodeView={toggleCodeView}
-            onExecuteSql={onExecuteSql}
-          />
-        ))
+        <>
+          {results.map((message, i) => (
+            <ChatMessage
+              key={i}
+              message={message}
+              index={i}
+              activeCodeIndex={activeCodeIndex}
+              toggleCodeView={toggleCodeView}
+              onExecuteSql={onExecuteSql}
+            />
+          ))}
+
+          {loading && (
+            <ChatMessage
+              key="loading"
+              loading
+              activeCodeIndex={activeCodeIndex}
+              toggleCodeView={toggleCodeView}
+              onExecuteSql={onExecuteSql}
+            />
+          )}
+        </>
       )}
     </main>
   );
