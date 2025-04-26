@@ -12,7 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { Database, Server, KeyRound, User, FileText, Lock } from "lucide-react";
+import {
+  Database,
+  Server,
+  KeyRound,
+  User,
+  FileText,
+  Lock,
+  Loader,
+} from "lucide-react";
 
 interface DBConfig {
   host: string;
@@ -39,6 +47,7 @@ export default function Connect() {
   const [error, setError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("form");
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
   const providers = [
     { value: "postgresql", label: "PostgreSQL" },
@@ -72,16 +81,19 @@ export default function Connect() {
     e.preventDefault();
     setError("");
     try {
-      const payload = activeTab === "form" ? form : { connectionString };
+      setLoading(true);
+      const payload = { ...form, connectionString };
       const res = await axios.post("http://localhost:8080/connect", payload);
       localStorage.setItem(
         "dbConfig",
-        JSON.stringify(activeTab === "form" ? form : { connectionString })
+        JSON.stringify({ ...form, connectionString })
       );
       localStorage.setItem("databases", JSON.stringify(res.data.databases));
       window.location.href = "/select";
     } catch (err: any) {
       setError(err.response?.data?.error || "Connection failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -204,9 +216,11 @@ export default function Connect() {
                 <div className="pt-4 flex justify-between gap-3">
                   <Button
                     type="submit"
+                    disabled={loading}
                     className="px-5 w-1/2 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Connect
+                    {loading && <Loader className="animate-spin" />}
                   </Button>
                   <Button
                     type="button"
@@ -251,9 +265,11 @@ export default function Connect() {
                 <div className="pt-4 flex justify-between gap-3">
                   <Button
                     type="submit"
+                    disabled={loading}
                     className="px-5 w-1/2 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Connect
+                    {loading && <Loader className="animate-spin" />}
                   </Button>
                   <Button
                     type="button"
