@@ -208,11 +208,13 @@ export default function Query() {
       }
 
       if (data.result_table && data.result_table.length > 0) {
+        console.log("first");
         // For SELECT queries with data
         resultContent = data.result_table;
         resultMessage =
           data.message || `Query returned ${data.result_table.length} results`;
       } else if (data.affected !== undefined) {
+        console.log("second");
         // For modification queries with affected rows info
         setShouldReRender(!shouldReRender);
         resultContent = [];
@@ -220,6 +222,7 @@ export default function Query() {
           data.message ||
           `Operation completed. ${data.affected} rows affected.`;
       } else {
+        setShouldReRender(!shouldReRender);
         // Fallback for other cases
         resultContent = data.result_table || [];
         resultMessage = data.message || "Query executed successfully";

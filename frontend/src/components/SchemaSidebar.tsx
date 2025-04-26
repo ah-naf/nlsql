@@ -2,7 +2,7 @@
 import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
-import { Database } from "lucide-react";
+import { Database, Loader } from "lucide-react";
 import { TableSearch } from "./schema/TableSearch";
 import { TableItem } from "./schema/TableItem";
 import { BriefTable, DatabaseSchema, TableInfo } from "@/types/schema";
@@ -20,22 +20,31 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>("");
   const [schemaError, setSchemaError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingTables, setLoadingTables] = useState<Record<string, boolean>>(
+    {}
+  );
   const parentRef = useRef<HTMLDivElement>(null);
   const itemHeights = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    (async () => {
+    const fetchBriefSchema = async () => {
+      setIsLoading(true);
       try {
         const res = await axios.get<{ tables: BriefTable[] }>(
           "http://localhost:8080/schema",
           { params: { ...dbConfig, brief: true } }
         );
-        setBriefTables(res.data.tables);
+        setBriefTables(res.data.tables || []);
         setError(null);
       } catch (e: any) {
         setError(e.response?.data?.error || e.message);
+      } finally {
+        setIsLoading(false);
       }
-    })();
+    };
+
+    fetchBriefSchema();
   }, [shouldReRender]);
 
   const filtered = useMemo(() => {
@@ -76,16 +85,19 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       if (!fullSchema[tableName]) {
         try {
           setSchemaError("");
+          setLoadingTables((prev) => ({ ...prev, [tableName]: true }));
+
           const res = await axios.get<{ table: TableInfo }>(
             `http://localhost:8080/schema/${tableName}`,
             { params: dbConfig }
           );
           setFullSchema((fs) => ({ ...fs, [tableName]: res.data.table }));
-
           virtualizer.measure();
         } catch (e: any) {
           console.error("Failed to load table:", e);
           setSchemaError(e.response?.data?.error || e.message);
+        } finally {
+          setLoadingTables((prev) => ({ ...prev, [tableName]: false }));
         }
       }
     } else {
@@ -95,6 +107,12 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       virtualizer.measure();
     }
   };
+
+  const TableLoadingSkeleton = () => (
+    <div className="animate-pulse px-2 py-2">
+      <div className="space-y-2 py-5 bg-gray-200 rounded w-full"></div>
+    </div>
+  );
 
   return (
     <aside className="w-96 flex flex-col h-full border-r bg-white shadow">
@@ -107,7 +125,13 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       </div>
 
       <div ref={parentRef} className="flex-1 overflow-auto px-2">
-        {error ? (
+        {isLoading ? (
+          <div className="py-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <TableLoadingSkeleton key={i} />
+            ))}
+          </div>
+        ) : error ? (
           <ErrorState error={error} />
         ) : filtered.length === 0 ? (
           <EmptyState />
@@ -120,6 +144,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
               const table = filtered[virtualItem.index];
               const isOpen = openTable === table.name;
               const tableData = fullSchema[table.name];
+              const isTableLoading = loadingTables[table.name];
 
               return (
                 <div
@@ -138,6 +163,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
                       tableData={tableData}
                       schemaError={schemaError}
                       onToggle={handleToggle}
+                      isLoading={isTableLoading}
                     />
                   </div>
                 </div>
