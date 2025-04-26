@@ -1,5 +1,22 @@
 ## Changelog
 
+### 26 April 2025
+
+1. **Support Connection via Connection String**  
+   You can now connect to a PostgreSQL database using a **full connection string** instead of providing individual host, port, user, and password fields. This simplifies integration for hosted databases and advanced connection setups.
+
+2. **Fix Schema Sidebar Re-Render on Toggle**  
+   Fixed an issue where hiding and showing the schema sidebar caused unnecessary re-fetching from the backend.
+
+3. **Loading UI for Schema Fetching and Details**  
+   A **loading skeleton UI** has been added for the schema sidebar while fetching table lists and toggling table details.
+
+4. **Loading UI for Chat Bubbles**  
+   When a query is sent and the system is awaiting an LLM or database response, a **loading chat bubble** is now displayed.
+
+5. **Schema Refresh After Table Creation**  
+   After creating a new table, the frontend now **automatically fetches the updated schema** and refreshes the sidebar.
+
 ### 25 April 2025
 
 1. **React UI Migration**  
@@ -16,6 +33,7 @@
 
 3. **Smarter Prompt Construction for LLM**  
    Originally, the entire schema (all tables and their details) was sent to the LLM for SQL generation. This approach consumed a large context window for big databases. In this update, a **two-step prompt strategy** has been introduced:
+
    - The first prompt extracts **relevant table names** based on the user's question.
    - The second prompt uses only those tables' schemas to generate the final SQL.
 
