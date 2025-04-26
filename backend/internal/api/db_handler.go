@@ -1,3 +1,4 @@
+// api/db_handler.go
 package api
 
 import (
@@ -25,7 +26,7 @@ func GetDatabases(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
         return
     }
-	
+
 	conn, err := db.OpenConnection(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

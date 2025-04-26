@@ -1,3 +1,5 @@
+// db/connection.go
+
 package db
 
 import (
