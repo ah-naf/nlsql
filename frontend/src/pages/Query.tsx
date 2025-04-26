@@ -1,5 +1,5 @@
 // src/pages/Query.tsx
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import SchemaSidebar from "@/components/SchemaSidebar";
 import QueryHeader from "@/components/QueryHeader";
@@ -262,6 +262,7 @@ export default function Query() {
     } finally {
       setLoading(false);
       scrollToBottom();
+      setQuery("");
     }
   };
 
@@ -292,11 +293,9 @@ export default function Query() {
 
   return (
     <div className="flex h-screen">
-      {showSidebar && (
-        <div className="w-[25rem]">
-          <SchemaSidebar shouldReRender={shouldReRender} />
-        </div>
-      )}
+      <div className={`w-[25rem] ${showSidebar ? "block" : "hidden"}`}>
+        <SchemaSidebar shouldReRender={shouldReRender} />
+      </div>
 
       <div
         className={`flex-1 flex flex-col ${
@@ -315,6 +314,7 @@ export default function Query() {
           activeCodeIndex={activeCodeIndex}
           toggleCodeView={toggleCodeView}
           onExecuteSql={executeExtractedSql}
+          loading={loading}
         />
 
         <QueryInput

@@ -130,7 +130,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   );
 
   return (
-    <aside className="w-96 flex flex-col h-full border-r bg-white shadow">
+    <aside className="w-[25rem] flex flex-col h-full border-r bg-white shadow">
       <div className="p-4 py-2 pt-5 border-b bg-gray-50">
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
           <Database size={20} className="text-indigo-600" />
