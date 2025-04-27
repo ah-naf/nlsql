@@ -1,5 +1,10 @@
 ## Changelog
 
+### 27 April 2025
+
+1. **Add MYSQL**
+   You can now connect to MY-SQL database using both connection string and individual host, port, user and password fields.
+
 ### 26 April 2025
 
 1. **Support Connection via Connection String**  
