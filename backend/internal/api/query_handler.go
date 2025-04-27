@@ -105,7 +105,7 @@ func HandleNLQuery(c *gin.Context) {
 
 	// 1) Table detection
 	isLikely := utils.IsDBOperation(req.Prompt)
-	tables, err := db.GetTableNameList(conn)
+	tables, err := db.GetTableNameList(conn, req.Config.Provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Table fetch: " + err.Error()})
 		return

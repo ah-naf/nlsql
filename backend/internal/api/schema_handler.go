@@ -35,7 +35,7 @@ func GetSchema(c *gin.Context) {
 	defer conn.Close()
 
 	if c.Query("brief") == "true" {
-		list, err := db.BriefSchema(conn)
+		list, err := db.BriefSchema(conn, req.Provider)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

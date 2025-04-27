@@ -11,14 +11,64 @@ import (
 	"github.com/lib/pq"
 )
 
+// BriefSchema returns just table names + row counts.
+func BriefSchema(conn *sql.DB, provider string) ([]models.BriefSchemaItem, error) {
+	tbls, err := GetTableNameList(conn, provider)
+	if err != nil {
+		return nil, err
+	}
+	var out []models.BriefSchemaItem
+	for _, tbl := range tbls {
+		var cnt int
+		var query string
+
+		switch provider {
+		case "postgres":
+			query = fmt.Sprintf("SELECT COUNT(*) FROM %s", pq.QuoteIdentifier(tbl))
+		case "mysql":
+			query = fmt.Sprintf("SELECT COUNT(*) FROM `%s`", tbl)
+		default:
+			return nil, fmt.Errorf("unsupported provider: %s", provider)
+		}
+
+		if err := conn.QueryRow(query).Scan(&cnt); err != nil {
+			log.Printf("count %s: %v", tbl, err)
+			continue
+		}
+		out = append(out, models.BriefSchemaItem{Name: tbl, RowCount: cnt})
+	}
+	return out, nil
+}
+
 // GetTableNameList returns all public‐schema table names.
-func GetTableNameList(conn *sql.DB) ([]string, error) {
-	rows, err := conn.Query(`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema='public'
-        ORDER BY table_name
-    `)
+func GetTableNameList(conn *sql.DB, provider string) ([]string, error) {
+	var query string
+
+	switch provider {
+	case "postgres":
+		query = `
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			AND table_type = 'BASE TABLE'
+			ORDER BY table_name
+		`
+	case "mysql":
+		query = `
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = DATABASE()
+			AND table_type = 'BASE TABLE'
+			ORDER BY table_name
+		`
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", provider)
+	}
+
+	rows, err := conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -33,26 +83,6 @@ func GetTableNameList(conn *sql.DB) ([]string, error) {
 		names = append(names, t)
 	}
 	return names, nil
-}
-
-// BriefSchema returns just table names + row counts.
-func BriefSchema(conn *sql.DB) ([]models.BriefSchemaItem, error) {
-	tbls, err := GetTableNameList(conn)
-	if err != nil {
-		return nil, err
-	}
-	var out []models.BriefSchemaItem
-	for _, tbl := range tbls {
-		var cnt int
-		if err := conn.QueryRow(
-			fmt.Sprintf("SELECT COUNT(*) FROM %s", pq.QuoteIdentifier(tbl)),
-		).Scan(&cnt); err != nil {
-			log.Printf("count %s: %v", tbl, err)
-			continue
-		}
-		out = append(out, models.BriefSchemaItem{Name: tbl, RowCount: cnt})
-	}
-	return out, nil
 }
 
 // LoadFullSchema loads columns, PKs, uniques, FKs and row counts.
