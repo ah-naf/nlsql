@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 
 	"nlsql/internal/models"
@@ -15,6 +16,9 @@ import (
 // OpenConnection opens a *sql.DB to the given database (defaults to "postgres" if DBName=="").
 func OpenConnection(conf models.DBRequest) (*sql.DB, error) {
 	if conf.ConnectionString != "" {
+		if conf.Provider != "" {
+			return sql.Open(conf.Provider, conf.ConnectionString)
+		}
 		return sql.Open(getDriverNameFromConnectionString(conf.ConnectionString), conf.ConnectionString)
 	}
 

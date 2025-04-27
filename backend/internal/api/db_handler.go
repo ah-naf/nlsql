@@ -13,19 +13,19 @@ import (
 // GetDatabases handles GET /databases
 func GetDatabases(c *gin.Context) {
 	var req models.DBRequest
-    req.Host = c.Query("host")
-    req.Port = c.Query("port")
-    req.User = c.Query("user")
-    req.Pass = c.Query("pass")
-    req.DBName = c.Query("dbname")
-    req.Provider = c.Query("provider")
-    req.SSLMode = c.Query("sslmode")
-    req.ConnectionString = c.Query("connectionString")
+	req.Host = c.Query("host")
+	req.Port = c.Query("port")
+	req.User = c.Query("user")
+	req.Pass = c.Query("pass")
+	req.DBName = c.Query("dbname")
+	req.Provider = c.Query("provider")
+	req.SSLMode = c.Query("sslmode")
+	req.ConnectionString = c.Query("connectionString")
 
 	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
-        return
-    }
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
+		return
+	}
 
 	conn, err := db.OpenConnection(req)
 	if err != nil {
@@ -34,7 +34,7 @@ func GetDatabases(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	list, err := db.GetDatabases(conn)
+	list, err := db.GetDatabases(req.Provider, conn)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -60,7 +60,7 @@ func CreateDB(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	if err := db.CreateDatabase(conn, req.DBName); err != nil {
+	if err := db.CreateDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -85,7 +85,7 @@ func DeleteDB(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	if err := db.DeleteDatabase(conn, req.DBName); err != nil {
+	if err := db.DeleteDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -101,9 +101,9 @@ func ConnectDB(c *gin.Context) {
 	}
 
 	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
-        return
-    }
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
+		return
+	}
 
 	conn, err := db.OpenConnection(req)
 	if err != nil {
@@ -117,7 +117,7 @@ func ConnectDB(c *gin.Context) {
 		return
 	}
 
-	list, err := db.GetDatabases(conn)
+	list, err := db.GetDatabases(req.Provider, conn)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

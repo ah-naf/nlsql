@@ -105,7 +105,7 @@ func HandleNLQuery(c *gin.Context) {
 
 	// 1) Table detection
 	isLikely := utils.IsDBOperation(req.Prompt)
-	tables, err := db.GetTableNameList(conn)
+	tables, err := db.GetTableNameList(conn, req.Config.Provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Table fetch: " + err.Error()})
 		return
@@ -142,7 +142,7 @@ func HandleNLQuery(c *gin.Context) {
 	// 3) NL→SQL
 	var sqlQuery string
 	if isLikely && (strings.TrimSpace(detResp) == "!!" || strings.Contains(strings.ToLower(req.Prompt), "table")) {
-		fullSchema, err := db.LoadFullSchema(conn)
+		fullSchema, err := db.LoadFullSchema(conn, req.Config.Provider)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load: " + err.Error()})
 			return
@@ -159,7 +159,7 @@ func HandleNLQuery(c *gin.Context) {
 		sqlQuery = strings.TrimSpace(out)
 	} else {
 		detected := utils.ParseCSV(detResp)
-		fullSchema, err := db.LoadFullSchema(conn)
+		fullSchema, err := db.LoadFullSchema(conn, req.Config.Provider)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load: " + err.Error()})
 			return
