@@ -44,7 +44,7 @@ func GetSchema(c *gin.Context) {
 		return
 	}
 
-	full, err := db.LoadFullSchema(conn)
+	full, err := db.LoadFullSchema(conn, req.Provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -78,7 +78,7 @@ func GetTableSchema(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	full, err := db.LoadFullSchema(conn)
+	full, err := db.LoadFullSchema(conn, req.Provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

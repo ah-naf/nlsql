@@ -23,7 +23,7 @@ func BriefSchema(conn *sql.DB, provider string) ([]models.BriefSchemaItem, error
 		var query string
 
 		switch provider {
-		case "postgres":
+		case "postgres", "postgresql":
 			query = fmt.Sprintf("SELECT COUNT(*) FROM %s", pq.QuoteIdentifier(tbl))
 		case "mysql":
 			query = fmt.Sprintf("SELECT COUNT(*) FROM `%s`", tbl)
@@ -45,7 +45,7 @@ func GetTableNameList(conn *sql.DB, provider string) ([]string, error) {
 	var query string
 
 	switch provider {
-	case "postgres":
+	case "postgres", "postgresql":
 		query = `
 			SELECT table_name
 			FROM information_schema.tables
@@ -86,27 +86,28 @@ func GetTableNameList(conn *sql.DB, provider string) ([]string, error) {
 }
 
 // LoadFullSchema loads columns, PKs, uniques, FKs and row counts.
-func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
-	const colQ = `
-    SELECT
-      c.table_name,
-      c.column_name,
-      c.data_type,
-      (c.is_nullable = 'YES') AS is_nullable,
-      c.column_default,
-      pgd.description   AS column_description,
-      tbl_pgd.description AS table_description
-    FROM information_schema.columns AS c
-    LEFT JOIN pg_catalog.pg_stat_all_tables AS st
-      ON c.table_name = st.relname
-    LEFT JOIN pg_catalog.pg_description AS pgd
-      ON pgd.objoid = st.relid AND pgd.objsubid = c.ordinal_position
-    LEFT JOIN pg_catalog.pg_description AS tbl_pgd
-      ON tbl_pgd.objoid = st.relid AND tbl_pgd.objsubid = 0
-    WHERE c.table_schema = 'public'
-    ORDER BY c.table_name, c.ordinal_position;
-    `
-	rows, err := conn.Query(colQ)
+func LoadFullSchema(conn *sql.DB, provider string) (map[string]models.TableInfo, error) {
+	var colQuery, pkQuery, uqQuery, fkQuery, rowCountFormat string
+
+	switch provider {
+	case "postgres", "postgresql":
+		colQuery = PostgresQueries.Columns
+		pkQuery = PostgresQueries.PrimaryKeys
+		uqQuery = PostgresQueries.UniqueKeys
+		fkQuery = PostgresQueries.ForeignKeys
+		rowCountFormat = PostgresQueries.RowCount
+	case "mysql":
+		colQuery = MySQLQueries.Columns
+		pkQuery = MySQLQueries.PrimaryKeys
+		uqQuery = MySQLQueries.UniqueKeys
+		fkQuery = MySQLQueries.ForeignKeys
+		rowCountFormat = MySQLQueries.RowCount
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", provider)
+	}
+
+	// get columns info
+	rows, err := conn.Query(colQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +118,16 @@ func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
 		var tbl, col, dt string
 		var isNull bool
 		var def, cDesc, tDesc sql.NullString
+
 		if err := rows.Scan(&tbl, &col, &dt, &isNull, &def, &cDesc, &tDesc); err != nil {
 			return nil, err
 		}
+
 		ti := schema[tbl]
 		if ti.Name == "" {
 			ti = models.TableInfo{Name: tbl, Columns: []models.ColumnInfo{}, Description: tDesc}
 		}
+
 		ti.Columns = append(ti.Columns, models.ColumnInfo{
 			Name:          col,
 			DataType:      dt,
@@ -139,19 +143,12 @@ func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
 	}
 
 	// Primary keys
-	const pkQ = `
-    SELECT tc.table_name, kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_schema = kcu.constraint_schema
-     AND tc.constraint_name = kcu.constraint_name
-    WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema='public';
-    `
-	pkRows, err := conn.Query(pkQ)
+	pkRows, err := conn.Query(pkQuery)
 	if err != nil {
 		return nil, err
 	}
 	defer pkRows.Close()
+
 	for pkRows.Next() {
 		var tbl, col string
 		if err := pkRows.Scan(&tbl, &col); err != nil {
@@ -168,15 +165,7 @@ func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
 	}
 
 	// Unique constraints
-	const uqQ = `
-    SELECT tc.table_name, kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_schema = kcu.constraint_schema
-     AND tc.constraint_name = kcu.constraint_name
-    WHERE tc.constraint_type='UNIQUE' AND tc.table_schema='public';
-    `
-	uqRows, err := conn.Query(uqQ)
+	uqRows, err := conn.Query(uqQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -197,22 +186,7 @@ func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
 	}
 
 	// Foreign keys
-	const fkQ = `
-    SELECT
-      kcu.table_name,
-      kcu.column_name,
-      ccu.table_name AS foreign_table_name,
-      ccu.column_name AS foreign_column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_schema = kcu.constraint_schema
-     AND tc.constraint_name = kcu.constraint_name
-    JOIN information_schema.constraint_column_usage ccu
-      ON tc.constraint_schema = ccu.constraint_schema
-     AND tc.constraint_name = ccu.constraint_name
-    WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_schema='public';
-    `
-	fkRows, err := conn.Query(fkQ)
+	fkRows, err := conn.Query(fkQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +210,16 @@ func LoadFullSchema(conn *sql.DB) (map[string]models.TableInfo, error) {
 	// Row counts
 	for tbl, ti := range schema {
 		var cnt int
-		if err := conn.QueryRow(
-			fmt.Sprintf("SELECT COUNT(*) FROM %s", pq.QuoteIdentifier(tbl)),
-		).Scan(&cnt); err != nil {
+		var query string
+
+		switch provider {
+		case "postgres", "postgresql":
+			query = fmt.Sprintf(rowCountFormat, pq.QuoteIdentifier(tbl))
+		case "mysql":
+			query = fmt.Sprintf(rowCountFormat, tbl)
+		}
+
+		if err := conn.QueryRow(query).Scan(&cnt); err != nil {
 			log.Printf("row count %s: %v", tbl, err)
 		}
 		ti.RowCount = cnt
