@@ -240,6 +240,28 @@ export default function Connect() {
             <TabsContent value="string">
               <form className="space-y-5" onSubmit={handleSubmit}>
                 <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    {fieldIcons.provider} Database Provider
+                  </label>
+                  <Select
+                    value={form.provider}
+                    onValueChange={(value) =>
+                      handleSelectChange("provider", value)
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-white border border-gray-200 rounded-md h-10">
+                      <SelectValue placeholder="Select database provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.map((provider) => (
+                        <SelectItem key={provider.value} value={provider.value}>
+                          {provider.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
                   <label
                     htmlFor="connectionString"
                     className="text-sm font-medium text-gray-700 flex items-center gap-2"
@@ -250,16 +272,12 @@ export default function Connect() {
                   <Input
                     id="connectionString"
                     name="connectionString"
-                    placeholder="postgresql://user:password@host:port/dbname?sslmode=disable"
+                    placeholder="Enter your database connection string"
                     value={connectionString}
                     onChange={handleConnStringChange}
                     required
                     className="h-10 bg-white border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
-                  <p className="text-xs text-gray-500 mt-1 ml-1">
-                    Format:
-                    protocol://username:password@host:port/database?options
-                  </p>
                 </div>
 
                 <div className="pt-4 flex justify-between gap-3">
