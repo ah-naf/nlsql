@@ -1,5 +1,5 @@
 # NL→SQL Chat
-
+2
 A simple web application that lets you ask natural-language questions about your PostgreSQL database and have them converted into SQL queries by an LLM. It includes schema browsing, query confirmation for destructive statements, and result display with pagination and hover-tooltips.
 
 <center>
