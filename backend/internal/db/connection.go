@@ -80,8 +80,9 @@ func getDriverNameFromConnectionString(connStr string) string {
 	}
 }
 
+var OpenAdminConnection = openAdminConnection
 // OpenAdminConnection connects always to the "postgres" DB for create/delete operations.
-func OpenAdminConnection(conf models.DBRequest) (*sql.DB, error) {
+func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
 	adminConf := conf
 
 	switch conf.Provider {

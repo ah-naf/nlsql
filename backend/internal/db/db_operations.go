@@ -39,8 +39,9 @@ func getDatabases(provider string, conn *sql.DB) ([]string, error) {
 	return out, nil
 }
 
+var CreateDatabase = createDatabase
 // CreateDatabase issues CREATE DATABASE <name>.
-func CreateDatabase(conn *sql.DB, name, provider string) error {
+func createDatabase(conn *sql.DB, name, provider string) error {
 	var stmt string
 
 	switch provider {
