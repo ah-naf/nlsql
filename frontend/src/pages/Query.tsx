@@ -1,5 +1,5 @@
 // src/pages/Query.tsx
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import SchemaSidebar from "@/components/SchemaSidebar";
 import QueryHeader from "@/components/QueryHeader";
