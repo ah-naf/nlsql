@@ -8,8 +8,10 @@ import (
 	"github.com/lib/pq"
 )
 
+var GetDatabases = getDatabases
+
 // GetDatabases returns non-template Postgres DB names.
-func GetDatabases(provider string, conn *sql.DB) ([]string, error) {
+func getDatabases(provider string, conn *sql.DB) ([]string, error) {
 	var rows *sql.Rows
 	var err error
 
