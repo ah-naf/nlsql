@@ -13,8 +13,10 @@ import (
 	"nlsql/internal/models"
 )
 
+var OpenConnection = openConnection
+
 // OpenConnection opens a *sql.DB to the given database (defaults to "postgres" if DBName=="").
-func OpenConnection(conf models.DBRequest) (*sql.DB, error) {
+func openConnection(conf models.DBRequest) (*sql.DB, error) {
 	if conf.ConnectionString != "" {
 		if conf.Provider != "" {
 			return sql.Open(conf.Provider, conf.ConnectionString)
@@ -78,8 +80,9 @@ func getDriverNameFromConnectionString(connStr string) string {
 	}
 }
 
+var OpenAdminConnection = openAdminConnection
 // OpenAdminConnection connects always to the "postgres" DB for create/delete operations.
-func OpenAdminConnection(conf models.DBRequest) (*sql.DB, error) {
+func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
 	adminConf := conf
 
 	switch conf.Provider {

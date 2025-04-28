@@ -29,14 +29,15 @@ func ExecuteModification(ctx context.Context, conn *sql.DB, sqlQuery string) (in
 
 	go func() {
 		defer close(done)
-		res, execErr := tx.ExecContext(ctx, sqlQuery)
-		if execErr != nil {
-			err = execErr
+		res, err := tx.ExecContext(ctx, sqlQuery)
+		if err != nil {
+			execErr = err
 			return
 		}
 
 		affected, err = res.RowsAffected()
 		if err != nil {
+			execErr = err
 			return
 		}
 

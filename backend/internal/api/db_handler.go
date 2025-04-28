@@ -42,7 +42,7 @@ func GetDatabases(c *gin.Context) {
 	c.JSON(http.StatusOK, models.DatabaseListResponse{Databases: list})
 }
 
-// CreateDB handles POST /database/create
+// CreateDB handles POST /create
 func CreateDB(c *gin.Context) {
 	var req models.DBRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
