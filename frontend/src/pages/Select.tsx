@@ -37,11 +37,6 @@ export default function Select() {
   const navigate = useNavigate();
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
 
-  if (!dbConfig) {
-    navigate("/");
-    return null;
-  }
-
   useEffect(() => {
     const fetchDatabases = async () => {
       setFetchingDatabases(true);
@@ -54,6 +49,8 @@ export default function Select() {
           "databases",
           JSON.stringify(res.data.databases || [])
         );
+
+        // eslint-disable-next-line
       } catch (err: any) {
         setError(err.response?.data?.error || "Failed to load databases");
       } finally {
@@ -81,6 +78,8 @@ export default function Select() {
       localStorage.setItem("databases", JSON.stringify(updated));
       setNewdb("");
       setSuccess(`Database '${newdb}' created successfully.`);
+
+      // eslint-disable-next-line
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to create database");
     } finally {
@@ -106,6 +105,8 @@ export default function Select() {
       if (selected === dbToDelete) setSelected("");
       setDbToDelete(null);
       setSuccess(`Database '${dbToDelete}' deleted successfully.`);
+
+      // eslint-disable-next-line
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to delete database");
     } finally {
@@ -123,6 +124,11 @@ export default function Select() {
     localStorage.setItem("dbConfig", JSON.stringify(dbConfig));
     window.location.href = "/query";
   };
+
+  if (!dbConfig) {
+    navigate("/");
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-gradient-to-br from-blue-50 to-indigo-50">

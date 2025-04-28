@@ -38,6 +38,8 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
         );
         setBriefTables(res.data.tables || []);
         setError(null);
+
+        // eslint-disable-next-line
       } catch (e: any) {
         setError(e.response?.data?.error || e.message);
       } finally {
@@ -101,6 +103,8 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
           );
           setFullSchema((fs) => ({ ...fs, [tableName]: res.data.table }));
           virtualizer.measure();
+
+          // eslint-disable-next-line
         } catch (e: any) {
           console.error(e);
           setSchemaError(e.response?.data?.error || e.message);

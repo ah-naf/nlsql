@@ -37,17 +37,18 @@ export default function Query() {
     localStorage.getItem("dbConfig") || "null"
   ) as DBConfig | null;
 
-  // Redirect if no database config
+  // Initialize session ID on component mount
+  useEffect(() => {
+    if (dbConfig?.dbname) {
+      const activeSessionId = getSessionId(dbConfig.dbname);
+      setSessionId(activeSessionId);
+    }
+  }, [dbConfig]);
+
   if (!dbConfig || !dbConfig.dbname) {
     navigate("/");
     return null;
   }
-
-  // Initialize session ID on component mount
-  useEffect(() => {
-    const activeSessionId = getSessionId(dbConfig.dbname);
-    setSessionId(activeSessionId);
-  }, [dbConfig.dbname]);
 
   // Function to toggle code view
   const toggleCodeView = (index: number): void => {
@@ -80,6 +81,7 @@ export default function Query() {
       }
 
       // Create results entry
+      // eslint-disable-next-line
       let resultContent: any[] = [];
       let resultMessage = "";
 
@@ -110,6 +112,8 @@ export default function Query() {
           isQAResponse: false,
         },
       ]);
+
+      // eslint-disable-next-line
     } catch (err: any) {
       const errorMessage =
         err.response?.data?.error ||
@@ -191,6 +195,7 @@ export default function Query() {
       }
 
       // Create results entry
+      // eslint-disable-next-line
       let resultContent: any[] = [];
       let resultMessage = "";
 
@@ -245,6 +250,8 @@ export default function Query() {
 
       // setSqlCode(data.sql);
       setQuery("");
+
+      // eslint-disable-next-line
     } catch (err: any) {
       const errorMessage =
         err.response?.data?.error ||

@@ -14,6 +14,7 @@ export interface ConfirmationDialog {
 
 export interface ResultItem {
   type: "user" | "assistant";
+  // eslint-disable-next-line
   content?: any[];
   responseType?: "success" | "error";
   message?: string;
@@ -25,11 +26,13 @@ export interface ResultItem {
 }
 
 export interface TableCellProps {
+  // eslint-disable-next-line
   content: any;
   isQAColumn: boolean;
 }
 
 export interface ResultTableProps {
+  // eslint-disable-next-line
   data: any[];
   isQAResponse?: boolean;
   extractedSql?: string | null;

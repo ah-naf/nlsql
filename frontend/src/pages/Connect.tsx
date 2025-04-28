@@ -90,6 +90,8 @@ export default function Connect() {
       );
       localStorage.setItem("databases", JSON.stringify(res.data.databases));
       window.location.href = "/select";
+
+      // eslint-disable-next-line
     } catch (err: any) {
       setError(err.response?.data?.error || "Connection failed");
     } finally {
