@@ -18,10 +18,15 @@ var OpenConnection = openConnection
 // OpenConnection opens a *sql.DB to the given database (defaults to "postgres" if DBName=="").
 func openConnection(conf models.DBRequest) (*sql.DB, error) {
 	if conf.ConnectionString != "" {
-		if conf.Provider != "" {
-			return sql.Open(conf.Provider, conf.ConnectionString)
+		driver := conf.Provider
+		if driver == "" {
+			driver = getDriverNameFromConnectionString(conf.ConnectionString)
 		}
-		return sql.Open(getDriverNameFromConnectionString(conf.ConnectionString), conf.ConnectionString)
+		// normalize
+		if driver == "postgresql" {
+			driver = "postgres"
+		}
+		return sql.Open(driver, conf.ConnectionString)
 	}
 
 	if conf.Host == "" || conf.Port == "" || conf.User == "" || conf.Pass == "" {
@@ -81,6 +86,7 @@ func getDriverNameFromConnectionString(connStr string) string {
 }
 
 var OpenAdminConnection = openAdminConnection
+
 // OpenAdminConnection connects always to the "postgres" DB for create/delete operations.
 func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
 	adminConf := conf
