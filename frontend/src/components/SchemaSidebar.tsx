@@ -33,7 +33,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       setIsLoading(true);
       try {
         const res = await axios.get<{ tables: BriefTable[] }>(
-          "http://localhost:8080/schema",
+          "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/schema",
           { params: { ...dbConfig, brief: true } }
         );
         setBriefTables(res.data.tables || []);
@@ -98,7 +98,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
           setSchemaError("");
           setLoadingTables((prev) => ({ ...prev, [tableName]: true }));
           const res = await axios.get<{ table: TableInfo }>(
-            `http://localhost:8080/schema/${tableName}`,
+            `https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/schema/${tableName}`,
             { params: dbConfig }
           );
           setFullSchema((fs) => ({ ...fs, [tableName]: res.data.table }));

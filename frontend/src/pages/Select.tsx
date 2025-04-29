@@ -41,9 +41,12 @@ export default function Select() {
     const fetchDatabases = async () => {
       setFetchingDatabases(true);
       try {
-        const res = await axios.get("http://localhost:8080/databases", {
-          params: dbConfig,
-        });
+        const res = await axios.get(
+          "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/databases",
+          {
+            params: dbConfig,
+          }
+        );
         setDatabases(res.data.databases || []);
         localStorage.setItem(
           "databases",
@@ -69,10 +72,13 @@ export default function Select() {
     setSuccess("");
 
     try {
-      await axios.post("http://localhost:8080/create", {
-        ...dbConfig,
-        dbname: newdb,
-      });
+      await axios.post(
+        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/create",
+        {
+          ...dbConfig,
+          dbname: newdb,
+        }
+      );
       const updated = [...databases, newdb];
       setDatabases(updated);
       localStorage.setItem("databases", JSON.stringify(updated));
@@ -95,10 +101,13 @@ export default function Select() {
     setSuccess("");
 
     try {
-      await axios.post("http://localhost:8080/delete", {
-        ...dbConfig,
-        dbname: dbToDelete,
-      });
+      await axios.post(
+        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/delete",
+        {
+          ...dbConfig,
+          dbname: dbToDelete,
+        }
+      );
       const updated = databases.filter((db) => db !== dbToDelete);
       setDatabases(updated);
       localStorage.setItem("databases", JSON.stringify(updated));

@@ -11,16 +11,16 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  server: {
-    proxy: {
-      "/query": "http://localhost:8080",
-      "/databases": "http://localhost:8080",
-      "/create": "http://localhost:8080",
-      "/delete": "http://localhost:8080",
-      "/connect": "http://localhost:8080",
-      "/schema": "http://localhost:8080",
-    },
-  },
+  // server: {
+  //   proxy: {
+  //     "/query": "http://localhost:8080",
+  //     "/databases": "http://localhost:8080",
+  //     "/create": "http://localhost:8080",
+  //     "/delete": "http://localhost:8080",
+  //     "/connect": "http://localhost:8080",
+  //     "/schema": "http://localhost:8080",
+  //   },
+  // },
   build: {
     outDir: "dist",
   },

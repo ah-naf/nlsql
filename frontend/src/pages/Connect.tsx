@@ -83,7 +83,10 @@ export default function Connect() {
     try {
       setLoading(true);
       const payload = { ...form, connectionString };
-      const res = await axios.post("http://localhost:8080/connect", payload);
+      const res = await axios.post(
+        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/connect",
+        payload
+      );
       localStorage.setItem(
         "dbConfig",
         JSON.stringify({ ...form, connectionString })
