@@ -22,7 +22,7 @@ func GetDatabases(c *gin.Context) {
 	req.SSLMode = c.Query("sslmode")
 	req.ConnectionString = c.Query("connectionString")
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
@@ -100,7 +100,7 @@ func ConnectDB(c *gin.Context) {
 		return
 	}
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}

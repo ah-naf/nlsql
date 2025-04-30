@@ -29,10 +29,14 @@ func openConnection(conf models.DBRequest) (*sql.DB, error) {
 		return sql.Open(driver, conf.ConnectionString)
 	}
 
-	if conf.Host == "" || conf.Port == "" || conf.User == "" || conf.Pass == "" {
+	if conf.Host == "" || conf.User == "" || conf.Pass == "" {
 		return nil, fmt.Errorf("required connection parameters are missing")
 	}
 
+	if conf.Port == "" {
+		conf.Port = getPort(conf.Provider)
+	}
+	
 	if conf.DBName == "" {
 		switch conf.Provider {
 		case "postgresql", "":
@@ -101,4 +105,16 @@ func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
 	}
 
 	return OpenConnection(adminConf)
+}
+
+func getPort(provider string) string {
+	switch provider {
+	case "postgres", "postgresql":
+		return "5432"
+	case "mysql":
+		return "3306"
+	default:
+		// default to postgres
+		return "5432"
+	}
 }

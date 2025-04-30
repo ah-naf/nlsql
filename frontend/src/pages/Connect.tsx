@@ -182,7 +182,7 @@ export default function Connect() {
                         value={form[key as keyof DBConfig]}
                         onChange={handleChange}
                         type={key === "pass" ? "password" : "text"}
-                        required={key !== "dbname"}
+                        required={!["dbname", "port"].includes(key)}
                         className="h-10 pl-3 bg-white border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
