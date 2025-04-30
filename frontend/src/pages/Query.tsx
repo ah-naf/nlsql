@@ -19,7 +19,6 @@ export default function Query() {
   const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [results, setResults] = useState<ResultItem[]>([]);
-  // const [sqlCode, setSqlCode] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [activeCodeIndex, setActiveCodeIndex] = useState<number | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -248,7 +247,6 @@ export default function Query() {
         },
       ]);
 
-      // setSqlCode(data.sql);
       setQuery("");
 
       // eslint-disable-next-line
@@ -273,28 +271,21 @@ export default function Query() {
     }
   };
 
-  // Confirm and execute SQL
   const confirmAndSendQuery = (): void => {
     setConfirmationDialog((prev) => ({ ...prev, open: false }));
     sendQuery(true);
   };
 
-  // Cancel query
   const cancelQuery = (): void => {
     setConfirmationDialog({ open: false, sql: "", pendingQuery: "" });
     setLoading(false);
   };
 
-  // Reset conversation
   const resetConversation = (): void => {
-    // Reset the session ID
     const newSessionId = resetSessionId(dbConfig.dbname);
     setSessionId(newSessionId);
-
-    // Clear the conversation UI
     setResults([]);
 
-    // Show confirmation
     alert("Conversation history has been reset.");
   };
 

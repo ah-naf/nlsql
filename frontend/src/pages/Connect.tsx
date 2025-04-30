@@ -32,6 +32,8 @@ interface DBConfig {
   sslmode: string;
 }
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export default function Connect() {
   const [form, setForm] = useState<DBConfig>({
     host: "",
@@ -52,16 +54,11 @@ export default function Connect() {
   const providers = [
     { value: "postgresql", label: "PostgreSQL" },
     { value: "mysql", label: "MySQL" },
-    // { value: "mongodb", label: "MongoDB" },
-    // { value: "mssql", label: "SQL Server" },
-    // { value: "oracle", label: "Oracle" },
   ];
 
   const sslModes = [
     { value: "disable", label: "Disable" },
     { value: "require", label: "Require" },
-    // { value: "verify-ca", label: "Verify CA" },
-    // { value: "verify-full", label: "Verify Full" },
   ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,10 +80,7 @@ export default function Connect() {
     try {
       setLoading(true);
       const payload = { ...form, connectionString };
-      const res = await axios.post(
-        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/connect",
-        payload
-      );
+      const res = await axios.post(`${apiUrl}/connect`, payload);
       localStorage.setItem(
         "dbConfig",
         JSON.stringify({ ...form, connectionString })

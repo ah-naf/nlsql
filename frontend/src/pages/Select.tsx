@@ -20,6 +20,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { Loader, Database, Trash, Plus } from "lucide-react";
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export default function Select() {
   const [databases, setDatabases] = useState<string[]>([]);
   const [newdb, setNewdb] = useState("");
@@ -41,12 +43,9 @@ export default function Select() {
     const fetchDatabases = async () => {
       setFetchingDatabases(true);
       try {
-        const res = await axios.get(
-          "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/databases",
-          {
-            params: dbConfig,
-          }
-        );
+        const res = await axios.get(`${apiUrl}/databases`, {
+          params: dbConfig,
+        });
         setDatabases(res.data.databases || []);
         localStorage.setItem(
           "databases",
@@ -72,13 +71,10 @@ export default function Select() {
     setSuccess("");
 
     try {
-      await axios.post(
-        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/create",
-        {
-          ...dbConfig,
-          dbname: newdb,
-        }
-      );
+      await axios.post(`${apiUrl}/create`, {
+        ...dbConfig,
+        dbname: newdb,
+      });
       const updated = [...databases, newdb];
       setDatabases(updated);
       localStorage.setItem("databases", JSON.stringify(updated));
@@ -101,13 +97,10 @@ export default function Select() {
     setSuccess("");
 
     try {
-      await axios.post(
-        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/delete",
-        {
-          ...dbConfig,
-          dbname: dbToDelete,
-        }
-      );
+      await axios.post(`${apiUrl}/delete`, {
+        ...dbConfig,
+        dbname: dbToDelete,
+      });
       const updated = databases.filter((db) => db !== dbToDelete);
       setDatabases(updated);
       localStorage.setItem("databases", JSON.stringify(updated));
