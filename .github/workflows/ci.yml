@@ -72,8 +72,9 @@ jobs:
         run: |
           cd backend
           cat <<EOF > .env
-          DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
           LLM_API_KEY=${{ secrets.LLM_API_KEY }}
+          LLM_API_URL=${{ secrets.LLM_API_URL }}
+          LLM_API_MODEL_NAME=${{ secrets.LLM_API_MODEL_NAME }}
           EOF
 
       - name: Create .env file for frontend
@@ -82,7 +83,7 @@ jobs:
           cat <<EOF > .env
           VITE_API_URL=${{ secrets.VITE_API_URL }}
           EOF
-          
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
