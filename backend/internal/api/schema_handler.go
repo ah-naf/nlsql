@@ -27,12 +27,14 @@ func GetSchema(c *gin.Context) {
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if c.Query("brief") == "true" {
 		list, err := db.BriefSchema(conn, req.Provider)
@@ -71,12 +73,14 @@ func GetTableSchema(c *gin.Context) {
 
 	table := c.Param("tableName")
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	full, err := db.LoadFullSchema(conn, req.Provider)
 	if err != nil {

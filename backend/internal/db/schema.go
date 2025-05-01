@@ -1,4 +1,3 @@
-// db/schema.go
 package db
 
 import (
@@ -28,7 +27,7 @@ func BriefSchema(conn *sql.DB, provider string) ([]models.BriefSchemaItem, error
 		case "mysql":
 			query = fmt.Sprintf("SELECT COUNT(*) FROM `%s`", tbl)
 		case "demo", "sqlite", "sqlite3":
-			query = fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, tbl)
+			query = fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", tbl)
 		default:
 			return nil, fmt.Errorf("unsupported provider: %s", provider)
 		}
@@ -99,7 +98,7 @@ func LoadFullSchema(conn *sql.DB, provider string) (map[string]models.TableInfo,
 		schema := make(map[string]models.TableInfo)
 
 		// 1) List tables
-		rows, err := conn.Query(`
+		tblRows, err := conn.Query(`
 			SELECT name
 			FROM sqlite_master
 			WHERE type='table'
@@ -109,12 +108,12 @@ func LoadFullSchema(conn *sql.DB, provider string) (map[string]models.TableInfo,
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer tblRows.Close()
 
 		var tables []string
-		for rows.Next() {
+		for tblRows.Next() {
 			var tbl string
-			if err := rows.Scan(&tbl); err != nil {
+			if err := tblRows.Scan(&tbl); err != nil {
 				return nil, err
 			}
 			tables = append(tables, tbl)
@@ -123,9 +122,8 @@ func LoadFullSchema(conn *sql.DB, provider string) (map[string]models.TableInfo,
 		// 2) For each table, gather details
 		for _, tbl := range tables {
 			ti := models.TableInfo{
-				Name:        tbl,
-				Columns:     []models.ColumnInfo{},
-				Description: sql.NullString{},
+				Name:    tbl,
+				Columns: []models.ColumnInfo{},
 			}
 
 			// Columns
@@ -150,63 +148,50 @@ func LoadFullSchema(conn *sql.DB, provider string) (map[string]models.TableInfo,
 					IsUnique:      false,
 					ForeignTable:  sql.NullString{},
 					ForeignColumn: sql.NullString{},
-					Description:   sql.NullString{},
 				})
 			}
 			colRows.Close()
 
 			// Unique constraints via indexes
-			idxRows, err := conn.Query(fmt.Sprintf(`PRAGMA index_list("%s")`, tbl))
-			if err == nil {
-				for idxRows.Next() {
-					var seq, unique int
-					var idxName string
-					if err := idxRows.Scan(&seq, &idxName, &unique); err != nil {
-						continue
-					}
-					if unique == 0 {
-						continue
-					}
-					infoRows, _ := conn.Query(fmt.Sprintf(`PRAGMA index_info("%s")`, idxName))
-					for infoRows.Next() {
-						var idxSeq, cid int
-						var colName string
-						infoRows.Scan(&idxSeq, &cid, &colName)
-						for i := range ti.Columns {
-							if ti.Columns[i].Name == colName {
-								ti.Columns[i].IsUnique = true
-								break
-							}
-						}
-					}
-					infoRows.Close()
+			idxRows, _ := conn.Query(fmt.Sprintf(`PRAGMA index_list("%s")`, tbl))
+			for idxRows.Next() {
+				var seq, unique int
+				var idxName string
+				idxRows.Scan(&seq, &idxName, &unique)
+				if unique == 0 {
+					continue
 				}
-				idxRows.Close()
-			}
-
-			// Foreign keys
-			fkRows, err := conn.Query(fmt.Sprintf(`PRAGMA foreign_key_list("%s")`, tbl))
-			if err == nil {
-				for fkRows.Next() {
-					var (
-						id, seq                   int
-						refTable                  string
-						fromCol, toCol            string
-						onUpdate, onDelete, match string
-					)
-					if err := fkRows.Scan(&id, &seq, &refTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); err != nil {
-						continue
-					}
+				infoRows, _ := conn.Query(fmt.Sprintf(`PRAGMA index_info("%s")`, idxName))
+				for infoRows.Next() {
+					var idxSeq, cid int
+					var colName string
+					infoRows.Scan(&idxSeq, &cid, &colName)
 					for i := range ti.Columns {
-						if ti.Columns[i].Name == fromCol {
-							ti.Columns[i].ForeignTable = sql.NullString{String: refTable, Valid: true}
-							ti.Columns[i].ForeignColumn = sql.NullString{String: toCol, Valid: true}
+						if ti.Columns[i].Name == colName {
+							ti.Columns[i].IsUnique = true
 							break
 						}
 					}
 				}
-				fkRows.Close()
+				infoRows.Close()
 			}
+			idxRows.Close()
+
+			// Foreign keys
+			fkRows, _ := conn.Query(fmt.Sprintf(`PRAGMA foreign_key_list("%s")`, tbl))
+			for fkRows.Next() {
+				var id, seq int
+				var refTable, fromCol, toCol, onUpdate, onDelete, match string
+				fkRows.Scan(&id, &seq, &refTable, &fromCol, &toCol, &onUpdate, &onDelete, &match)
+				for i := range ti.Columns {
+					if ti.Columns[i].Name == fromCol {
+						ti.Columns[i].ForeignTable = sql.NullString{String: refTable, Valid: true}
+						ti.Columns[i].ForeignColumn = sql.NullString{String: toCol, Valid: true}
+						break
+					}
+				}
+			}
+			fkRows.Close()
 
 			// Row count
 			var cnt int

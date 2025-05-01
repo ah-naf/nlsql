@@ -6,30 +6,88 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"nlsql/internal/models"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
 
+var (
+	// per-user in-memory db store
+	demoDBs   = make(map[string]*sql.DB)
+	demoMutex sync.Mutex
+)
+
+func SetupDemoDBCleanup(cleanupInterval time.Duration, maxIdleTime time.Duration) {
+	go func() {
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			cleanupIdleDemoDatabases(maxIdleTime)
+		}
+	}()
+}
+
+func cleanupIdleDemoDatabases(maxIdleTime time.Duration) {
+	demoMutex.Lock()
+	defer demoMutex.Unlock()
+
+	for key, conn := range demoDBs {
+		if err := conn.Ping(); err != nil {
+			// Connection is no longer valid, close and remove it
+			conn.Close()
+			delete(demoDBs, key)
+		}
+	}
+}
+
 var OpenConnection = openConnection
 
 // OpenConnection opens a *sql.DB to the given database (defaults to "postgres" if DBName=="").
-func openConnection(conf models.DBRequest) (*sql.DB, error) {
+func openConnection(conf models.DBRequest, c *gin.Context) (*sql.DB, error) {
 	// Handle if the user want demo database
 	if conf.Provider == "demo" {
-		conn, err := sql.Open("sqlite", ":memory:")
+		userKey := c.ClientIP()
+
+		demoMutex.Lock()
+		defer demoMutex.Unlock()
+
+		// Check if we already have a demo DB for this user
+		if dbConn, ok := demoDBs[userKey]; ok {
+			// Test if the connection is still valid
+			if err := dbConn.Ping(); err == nil {
+				return dbConn, nil
+			}
+			// If ping failed, the connection is invalid, so remove it and create a new one
+			dbConn.Close()
+			delete(demoDBs, userKey)
+		}
+
+		// Create a new in-memory SQLite DB for this user
+		dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", userKey)
+		dbConn, err := sql.Open("sqlite", dsn)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := initDemoSchema(conn); err != nil {
-			conn.Close()
+		// keep exactly one connection alive so the in-memory DB persists
+		dbConn.SetMaxOpenConns(1)
+		dbConn.SetMaxIdleConns(1)
+		dbConn.SetConnMaxIdleTime(time.Hour)
+
+		if err := initDemoSchema(dbConn); err != nil {
+			dbConn.Close()
 			return nil, err
 		}
-		return conn, nil
+
+		demoDBs[userKey] = dbConn
+		return dbConn, nil
 	}
 
 	if conf.ConnectionString != "" {
@@ -107,7 +165,7 @@ func getDriverNameFromConnectionString(connStr string) string {
 var OpenAdminConnection = openAdminConnection
 
 // OpenAdminConnection connects always to the "postgres" DB for create/delete operations.
-func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
+func openAdminConnection(conf models.DBRequest, c *gin.Context) (*sql.DB, error) {
 	adminConf := conf
 
 	switch conf.Provider {
@@ -119,7 +177,7 @@ func openAdminConnection(conf models.DBRequest) (*sql.DB, error) {
 		adminConf.DBName = "master" // System database for SQL Server
 	}
 
-	return OpenConnection(adminConf)
+	return OpenConnection(adminConf, c)
 }
 
 func initDemoSchema(conn *sql.DB) error {

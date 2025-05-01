@@ -27,12 +27,14 @@ func GetDatabases(c *gin.Context) {
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	list, err := db.GetDatabases(req.Provider, conn)
 	if err != nil {
@@ -53,12 +55,14 @@ func CreateDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "DBName cannot be blank"})
 		return
 	}
-	conn, err := db.OpenAdminConnection(req)
+	conn, err := db.OpenAdminConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := db.CreateDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -78,12 +82,14 @@ func DeleteDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "DBName cannot be blank"})
 		return
 	}
-	conn, err := db.OpenAdminConnection(req)
+	conn, err := db.OpenAdminConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := db.DeleteDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -105,12 +111,14 @@ func ConnectDB(c *gin.Context) {
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := conn.Ping(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
