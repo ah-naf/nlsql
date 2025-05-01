@@ -12,17 +12,20 @@ import (
 	"nlsql/internal/models"
 )
 
-const (
-	ApiURL    = "https://api.together.xyz/v1/chat/completions"
-	ModelName = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
-)
-
 // Connect sends a chat completion request to the LLM and returns its reply.
 func Connect(messages []models.Message) (string, error) {
 	config.LoadEnv()
 	token := os.Getenv("LLM_API_KEY")
 	if token == "" {
 		return "", fmt.Errorf("LLM_API_KEY not set")
+	}
+	ApiURL := os.Getenv("LLM_API_URL")
+	if ApiURL == "" {
+		return "", fmt.Errorf("LLM_API_URL not set")
+	}
+	ModelName := os.Getenv("LLM_API_MODEL_NAME")
+	if ModelName == "" {
+		return "", fmt.Errorf("LLM_API_MODEL_NAME not set")
 	}
 
 	payload := struct {
