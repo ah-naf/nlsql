@@ -1,3 +1,5 @@
+// db/schema_queries.go
+
 package db
 
 // PostgreSQL queries

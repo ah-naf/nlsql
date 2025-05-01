@@ -20,6 +20,8 @@ func getDatabases(provider string, conn *sql.DB) ([]string, error) {
 		rows, err = conn.Query(`SELECT datname FROM pg_database WHERE datistemplate = false;`)
 	case "mysql":
 		rows, err = conn.Query(`SHOW DATABASES;`)
+	case "demo":
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("unsupported database provider: %s", provider)
 	}
@@ -40,6 +42,7 @@ func getDatabases(provider string, conn *sql.DB) ([]string, error) {
 }
 
 var CreateDatabase = createDatabase
+
 // CreateDatabase issues CREATE DATABASE <name>.
 func createDatabase(conn *sql.DB, name, provider string) error {
 	var stmt string
