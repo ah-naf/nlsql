@@ -22,17 +22,19 @@ func GetSchema(c *gin.Context) {
 	req.SSLMode = c.Query("sslmode")
 	req.ConnectionString = c.Query("connectionString")
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.Provider != "demo" && req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if c.Query("brief") == "true" {
 		list, err := db.BriefSchema(conn, req.Provider)
@@ -64,19 +66,21 @@ func GetTableSchema(c *gin.Context) {
 	req.SSLMode = c.Query("sslmode")
 	req.ConnectionString = c.Query("connectionString")
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.Provider != "demo" && req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
 
 	table := c.Param("tableName")
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	full, err := db.LoadFullSchema(conn, req.Provider)
 	if err != nil {

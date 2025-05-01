@@ -2,6 +2,8 @@
 import axios from "axios";
 import { DBConfig } from "../types/query";
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export const extractSqlFromQaOutput = (output: string): string | null => {
   if (!output) return null;
 
@@ -21,16 +23,13 @@ export const sendQueryToBackend = async (
   sqlToConfirm: string,
   sessionId: string
 ) => {
-  return await axios.post(
-    "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/query",
-    {
-      config: dbConfig,
-      prompt: query,
-      confirmed,
-      sqlToConfirm,
-      sessionId,
-    }
-  );
+  return await axios.post(`${apiUrl}/query`, {
+    config: dbConfig,
+    prompt: query,
+    confirmed,
+    sqlToConfirm,
+    sessionId,
+  });
 };
 
 export const getSessionId = (dbName: string): string => {

@@ -22,17 +22,19 @@ func GetDatabases(c *gin.Context) {
 	req.SSLMode = c.Query("sslmode")
 	req.ConnectionString = c.Query("connectionString")
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.Provider != "demo" && req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	list, err := db.GetDatabases(req.Provider, conn)
 	if err != nil {
@@ -53,12 +55,14 @@ func CreateDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "DBName cannot be blank"})
 		return
 	}
-	conn, err := db.OpenAdminConnection(req)
+	conn, err := db.OpenAdminConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := db.CreateDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -78,12 +82,14 @@ func DeleteDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "DBName cannot be blank"})
 		return
 	}
-	conn, err := db.OpenAdminConnection(req)
+	conn, err := db.OpenAdminConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := db.DeleteDatabase(conn, req.DBName, req.Provider); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -100,17 +106,19 @@ func ConnectDB(c *gin.Context) {
 		return
 	}
 
-	if req.ConnectionString == "" && (req.Host == "" || req.Port == "" || req.User == "" || req.Pass == "") {
+	if req.Provider != "demo" && req.ConnectionString == "" && (req.Host == "" || req.User == "" || req.Pass == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Either connection string or required params must be provided"})
 		return
 	}
 
-	conn, err := db.OpenConnection(req)
+	conn, err := db.OpenConnection(req, c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	if err := conn.Ping(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

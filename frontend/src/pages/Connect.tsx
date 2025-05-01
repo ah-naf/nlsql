@@ -32,6 +32,8 @@ interface DBConfig {
   sslmode: string;
 }
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export default function Connect() {
   const [form, setForm] = useState<DBConfig>({
     host: "",
@@ -42,26 +44,20 @@ export default function Connect() {
     provider: "postgresql",
     sslmode: "disable",
   });
-
   const [connectionString, setConnectionString] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("form");
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const providers = [
     { value: "postgresql", label: "PostgreSQL" },
     { value: "mysql", label: "MySQL" },
-    // { value: "mongodb", label: "MongoDB" },
-    // { value: "mssql", label: "SQL Server" },
-    // { value: "oracle", label: "Oracle" },
   ];
 
   const sslModes = [
     { value: "disable", label: "Disable" },
     { value: "require", label: "Require" },
-    // { value: "verify-ca", label: "Verify CA" },
-    // { value: "verify-full", label: "Verify Full" },
   ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,13 +76,10 @@ export default function Connect() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
     try {
-      setLoading(true);
       const payload = { ...form, connectionString };
-      const res = await axios.post(
-        "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/connect",
-        payload
-      );
+      const res = await axios.post(`${apiUrl}/connect`, payload);
       localStorage.setItem(
         "dbConfig",
         JSON.stringify({ ...form, connectionString })
@@ -102,7 +95,27 @@ export default function Connect() {
     }
   };
 
-  // Icons for form fields
+  const handleDemo = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const payload = { provider: "demo" };
+      const res = await axios.post(`${apiUrl}/connect`, payload);
+      localStorage.setItem(
+        "dbConfig",
+        JSON.stringify({ provider: "demo", dbname: "Demo" })
+      );
+      localStorage.setItem("databases", JSON.stringify(res.data.databases));
+      window.location.href = "/query";
+
+      // eslint-disable-next-line
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Connection failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fieldIcons = {
     provider: <Database className="h-4 w-4 text-gray-500" />,
     host: <Server className="h-4 w-4 text-gray-500" />,
@@ -115,7 +128,7 @@ export default function Connect() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-      <Card className="w-full max-w-md shadow-lg border-0">
+      <Card className="w-full max-w-lg shadow-lg border-0">
         <h1 className="text-center text-2xl font-bold">Connect To Database</h1>
 
         <CardContent className="p-6 pt-3">
@@ -131,7 +144,7 @@ export default function Connect() {
             onValueChange={setActiveTab}
             className="w-full"
           >
-            <TabsList className="grid grid-cols-2 mb-6 rounded-lg bg-gray-100">
+            <TabsList className="grid grid-cols-2 mb-6 w-full rounded-lg bg-gray-100">
               <TabsTrigger
                 value="form"
                 className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm"
@@ -162,60 +175,64 @@ export default function Connect() {
                       <SelectValue placeholder="Select database provider" />
                     </SelectTrigger>
                     <SelectContent>
-                      {providers.map((provider) => (
-                        <SelectItem key={provider.value} value={provider.value}>
-                          {provider.label}
+                      {providers.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          {p.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {["host", "port", "user", "pass", "dbname"].map((key) => (
-                  <div key={key} className="space-y-1.5">
-                    <label
-                      htmlFor={key}
-                      className="text-sm font-medium text-gray-700 flex items-center gap-2"
-                    >
-                      {fieldIcons[key as keyof typeof fieldIcons]}{" "}
-                      {key.charAt(0).toUpperCase() + key.slice(1)}
-                    </label>
-                    <div className="relative">
-                      <Input
-                        id={key}
-                        name={key}
-                        placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
-                        value={form[key as keyof DBConfig]}
-                        onChange={handleChange}
-                        type={key === "pass" ? "password" : "text"}
-                        required={key !== "dbname"}
-                        className="h-10 pl-3 bg-white border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
+                <div className="grid grid-cols-2 gap-4">
+                  {["host", "port", "user", "pass", "dbname"].map((key) => (
+                    <div key={key} className="space-y-1.5">
+                      <label
+                        htmlFor={key}
+                        className="text-sm font-medium text-gray-700 flex items-center gap-2"
+                      >
+                        {fieldIcons[key as keyof typeof fieldIcons]}{" "}
+                        {key.charAt(0).toUpperCase() + key.slice(1)}
+                      </label>
+                      <div className="relative">
+                        <Input
+                          id={key}
+                          name={key}
+                          placeholder={
+                            key.charAt(0).toUpperCase() + key.slice(1)
+                          }
+                          value={form[key as keyof DBConfig]}
+                          onChange={handleChange}
+                          type={key === "pass" ? "password" : "text"}
+                          required={!["dbname", "port"].includes(key)}
+                          className="h-10 pl-3 bg-white border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    {fieldIcons.sslmode} SSL Mode
-                  </label>
-                  <Select
-                    value={form.sslmode}
-                    onValueChange={(value) =>
-                      handleSelectChange("sslmode", value)
-                    }
-                  >
-                    <SelectTrigger className="w-full bg-white border border-gray-200 rounded-md h-10">
-                      <SelectValue placeholder="Select SSL mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sslModes.map((mode) => (
-                        <SelectItem key={mode.value} value={mode.value}>
-                          {mode.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      {fieldIcons.sslmode} SSL Mode
+                    </label>
+                    <Select
+                      value={form.sslmode}
+                      onValueChange={(value) =>
+                        handleSelectChange("sslmode", value)
+                      }
+                    >
+                      <SelectTrigger className="w-full bg-white border border-gray-200 rounded-md h-10">
+                        <SelectValue placeholder="Select SSL mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sslModes.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="pt-4 flex justify-between gap-3">
@@ -225,7 +242,9 @@ export default function Connect() {
                     className="px-5 w-1/2 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Connect
-                    {loading && <Loader className="animate-spin" />}
+                    {loading && (
+                      <Loader className="animate-spin inline-block ml-2" />
+                    )}
                   </Button>
                   <Button
                     type="button"
@@ -258,14 +277,15 @@ export default function Connect() {
                       <SelectValue placeholder="Select database provider" />
                     </SelectTrigger>
                     <SelectContent>
-                      {providers.map((provider) => (
-                        <SelectItem key={provider.value} value={provider.value}>
-                          {provider.label}
+                      {providers.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          {p.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-1.5">
                   <label
                     htmlFor="connectionString"
@@ -292,7 +312,9 @@ export default function Connect() {
                     className="px-5 w-1/2 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Connect
-                    {loading && <Loader className="animate-spin" />}
+                    {loading && (
+                      <Loader className="animate-spin inline-block ml-2" />
+                    )}
                   </Button>
                   <Button
                     type="button"
@@ -309,6 +331,21 @@ export default function Connect() {
               </form>
             </TabsContent>
           </Tabs>
+
+          {/* Demo Button */}
+          <div className="w-full mt-4">
+            <Button
+              onClick={handleDemo}
+              disabled={loading}
+              className="bg-green-600 w-full hover:bg-green-700 text-white"
+            >
+              {loading ? (
+                <Loader className="animate-spin inline-block" />
+              ) : (
+                "Try Demo"
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

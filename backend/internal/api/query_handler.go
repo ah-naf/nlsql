@@ -96,12 +96,14 @@ func HandleNLQuery(c *gin.Context) {
 	history := getHistory(sessionID, c.ClientIP())
 
 	// DB connection
-	conn, err := db.OpenConnection(req.Config)
+	conn, err := db.OpenConnection(req.Config, c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB connection: " + err.Error()})
 		return
 	}
-	defer conn.Close()
+	if req.Config.Provider != "demo" {
+		defer conn.Close()
+	}
 
 	// 1) Table detection
 	isLikely := utils.IsDBOperation(req.Prompt)
@@ -143,6 +145,7 @@ func HandleNLQuery(c *gin.Context) {
 	var sqlQuery string
 	if isLikely && (strings.TrimSpace(detResp) == "!!" || strings.Contains(strings.ToLower(req.Prompt), "table")) {
 		fullSchema, err := db.LoadFullSchema(conn, req.Config.Provider)
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Schema load: " + err.Error()})
 			return
@@ -171,7 +174,9 @@ func HandleNLQuery(c *gin.Context) {
 				rel[t] = info
 			}
 		}
+		
 		prompt := llm.BuildSQLPromptWithHistory(rel, req.Prompt, histCtx)
+		fmt.Println(prompt)
 		out, err := llm.Connect([]models.Message{
 			{Role: "system", Content: "Expert SQL assistant for queries."},
 			{Role: "user", Content: prompt},

@@ -47,7 +47,7 @@ func TestOpenConnection(t *testing.T) {
 	for _, tt := range cases {
 		tt := tt // capture
 		t.Run(tt.name, func(t *testing.T) {
-			dbh, err := db.OpenConnection(tt.req)
+			dbh, err := db.OpenConnection(tt.req, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -89,7 +89,7 @@ func TestOpenAdminConnection(t *testing.T) {
 	for _, tt := range cases {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			dbh, err := db.OpenAdminConnection(tt.req)
+			dbh, err := db.OpenAdminConnection(tt.req, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)

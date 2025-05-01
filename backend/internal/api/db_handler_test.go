@@ -30,7 +30,7 @@ func TestGetDatabases_OK(t *testing.T) {
 		db.GetDatabases = origList
 	})
 
-	db.OpenConnection = func(req models.DBRequest) (*sql.DB, error) {
+	db.OpenConnection = func(req models.DBRequest, c *gin.Context) (*sql.DB, error) {
 		mockDB, _, _ := sqlmock.New() // mock driver automatically registered
 		return mockDB, nil            // Close() is perfectly safe
 	}
@@ -72,7 +72,7 @@ func TestCreateDB_OK(t *testing.T) {
 	})
 
 	/* ---- stub DB layer ---- */
-	db.OpenAdminConnection = func(req models.DBRequest) (*sql.DB, error) {
+	db.OpenAdminConnection = func(req models.DBRequest, c *gin.Context) (*sql.DB, error) {
 		mockDB, _, _ := sqlmock.New()
 		return mockDB, nil
 	}
@@ -112,7 +112,7 @@ func TestCreateDB_CreateDatabaseError(t *testing.T) {
 	})
 
 	mockDB, _, _ := sqlmock.New()
-	db.OpenAdminConnection = func(models.DBRequest) (*sql.DB, error) { return mockDB, nil }
+	db.OpenAdminConnection = func(models.DBRequest, *gin.Context) (*sql.DB, error) { return mockDB, nil }
 	db.CreateDatabase = func(*sql.DB, string, string) error { return errors.New("syntax error") }
 
 	body := `{"dbname":"bad","provider":"postgres"}`

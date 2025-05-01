@@ -12,6 +12,8 @@ type SchemaSidebarProps = {
   shouldReRender: boolean;
 };
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
   const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "null");
   const [briefTables, setBriefTables] = useState<BriefTable[]>([]);
@@ -33,7 +35,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
       setIsLoading(true);
       try {
         const res = await axios.get<{ tables: BriefTable[] }>(
-          "https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/schema",
+          `${apiUrl}/schema`,
           { params: { ...dbConfig, brief: true } }
         );
         setBriefTables(res.data.tables || []);
@@ -98,7 +100,7 @@ export default function SchemaSidebar({ shouldReRender }: SchemaSidebarProps) {
           setSchemaError("");
           setLoadingTables((prev) => ({ ...prev, [tableName]: true }));
           const res = await axios.get<{ table: TableInfo }>(
-            `https://nl-sql-gme3hme5fpfdg2ez.canadacentral-01.azurewebsites.net/schema/${tableName}`,
+            `${apiUrl}/schema/${tableName}`,
             { params: dbConfig }
           );
           setFullSchema((fs) => ({ ...fs, [tableName]: res.data.table }));
