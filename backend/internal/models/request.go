@@ -20,3 +20,10 @@ type NLQueryRequest struct {
 	SQLToConfirm string    `json:"sqlToConfirm"`
 	SessionID    string    `json:"sessionId"`
 }
+
+type DirectSQLRequest struct {
+	Config    DBRequest `json:"config"`
+	SQL       string   `json:"sql"`
+	SessionID string   `json:"session_id"`
+	Confirmed bool     `json:"confirmed"`
+}

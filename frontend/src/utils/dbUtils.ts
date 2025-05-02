@@ -32,6 +32,20 @@ export const sendQueryToBackend = async (
   });
 };
 
+export function sendSqlToBackend(
+  dbConfig: DBConfig,
+  sql: string,
+  confirmed: boolean = false,
+  sessionId: string = ""
+) {
+  return axios.post(`${apiUrl}/execute-sql`, {
+    config: dbConfig,
+    sql: sql,
+    confirmed: confirmed,
+    session_id: sessionId,
+  });
+}
+
 export const getSessionId = (dbName: string): string => {
   // Check if there's a stored session ID for this database
   const storedSessionId = localStorage.getItem(`sessionId-${dbName}`);

@@ -80,6 +80,93 @@ func addToHistory(sessionID, prompt, sqlQ, responseText string) {
 	h.LastUsed = time.Now()
 }
 
+// HandleDirectSQL is the POST /execute-sql handler for direct SQL execution
+func HandleDirectSQL(c *gin.Context) {
+	var req models.DirectSQLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(req.SQL) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SQL query cannot be empty"})
+		return
+	}
+
+	// Session
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("%s-%s", c.ClientIP(), req.Config.DBName)
+	}
+	_ = getHistory(sessionID, c.ClientIP())
+
+	// DB connection
+	conn, err := db.OpenConnection(req.Config, c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB connection: " + err.Error()})
+		return
+	}
+	if req.Config.Provider != "demo" {
+		defer conn.Close()
+	}
+
+	// Check if query needs confirmation
+	if utils.NeedsConfirmation(req.SQL) && !req.Confirmed {
+		opType := utils.OperationType(req.SQL)
+		c.JSON(http.StatusOK, gin.H{
+			"needs_confirmation": true,
+			"sql_preview":        req.SQL,
+			"message":            fmt.Sprintf("This %s may modify your DB. Confirm to proceed.", opType),
+			"sql_type":           opType,
+			"session_id":         sessionID,
+		})
+		return
+	}
+
+	// Execute
+	isMod := utils.NeedsConfirmation(req.SQL)
+	var results []map[string]interface{}
+	var affected int64
+
+	if isMod {
+		affected, err = db.ExecuteModification(c.Request.Context(), conn, req.SQL)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Exec failed: " + err.Error(), "sql": req.SQL})
+			return
+		}
+	} else {
+		results, err = db.ExecuteQuery(conn, req.SQL)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Query failed: " + err.Error(), "sql": req.SQL})
+			return
+		}
+	}
+
+	// Build response
+	resp := models.NLQueryResponse{
+		SQL:       req.SQL,
+		SessionID: sessionID,
+	}
+	if isMod {
+		resp.SQLType = utils.OperationType(req.SQL)
+		resp.Affected = affected
+		resp.Message = fmt.Sprintf("%s done. %d rows affected.", resp.SQLType, affected)
+	} else {
+		resp.ResultTable = results
+	}
+
+	// Save to history
+	msgText := fmt.Sprintf("Returned %d rows.", len(results))
+	if isMod {
+		msgText = fmt.Sprintf("%d rows affected.", affected)
+	}
+
+	// Use SQL as both prompt and SQL in history
+	addToHistory(sessionID, "Direct SQL: "+req.SQL, req.SQL, msgText)
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // HandleNLQuery is the POST /nlq handler.
 func HandleNLQuery(c *gin.Context) {
 	var req models.NLQueryRequest
@@ -174,7 +261,7 @@ func HandleNLQuery(c *gin.Context) {
 				rel[t] = info
 			}
 		}
-		
+
 		prompt := llm.BuildSQLPromptWithHistory(rel, req.Prompt, histCtx)
 		fmt.Println(prompt)
 		out, err := llm.Connect([]models.Message{

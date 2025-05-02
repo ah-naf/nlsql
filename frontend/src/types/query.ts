@@ -10,6 +10,7 @@ export interface ConfirmationDialog {
   open: boolean;
   sql: string;
   pendingQuery: string;
+  mode: "nl" | "sql"; // Added mode to track whether confirmation is for NL or SQL
 }
 
 export interface ResultItem {
