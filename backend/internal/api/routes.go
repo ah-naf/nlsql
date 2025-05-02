@@ -21,6 +21,7 @@ func SetupRouter() *gin.Engine {
 
 	// NL→SQL
 	r.POST("/query", HandleNLQuery)
+	r.POST("/execute-sql", HandleDirectSQL)
 
 	// DB management
 	r.GET("/databases", GetDatabases)

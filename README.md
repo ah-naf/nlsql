@@ -1,9 +1,6 @@
 # NL→SQL Chat
-A simple web application that lets you ask natural-language questions about your PostgreSQL database and have them converted into SQL queries by an LLM. It includes schema browsing, query confirmation for destructive statements, and result display with pagination and hover-tooltips.
 
-<center>
-<img src="nlsql.gif" alt="nlsql" width="800"/>
-</center>
+A simple web application that lets you ask natural-language questions about your PostgreSQL database and have them converted into SQL queries by an LLM. It includes schema browsing, query confirmation for destructive statements, and result display with pagination and hover-tooltips.
 
 ## Features
 

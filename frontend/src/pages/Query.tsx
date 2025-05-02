@@ -10,9 +10,13 @@ import { DBConfig, ConfirmationDialog, ResultItem } from "../types/query";
 import {
   extractSqlFromQaOutput,
   sendQueryToBackend,
+  sendSqlToBackend,
   getSessionId,
   resetSessionId,
 } from "../utils/dbUtils";
+import { AxiosError } from "axios";
+
+type Mode = "nl" | "sql";
 
 export default function Query() {
   const navigate = useNavigate();
@@ -29,6 +33,7 @@ export default function Query() {
       open: false,
       sql: "",
       pendingQuery: "",
+      mode: "nl",
     });
 
   // Load database configuration
@@ -49,88 +54,9 @@ export default function Query() {
     return null;
   }
 
-  // Function to toggle code view
+  // Toggle code view for SQL snippets
   const toggleCodeView = (index: number): void => {
-    if (activeCodeIndex === index) {
-      setActiveCodeIndex(null); // Hide code if already showing
-    } else {
-      setActiveCodeIndex(index); // Show code for this message
-    }
-  };
-
-  // Execute extracted SQL from QA response
-  const executeExtractedSql = async (sql: string): Promise<void> => {
-    try {
-      setLoading(true);
-
-      const response = await sendQueryToBackend(
-        dbConfig,
-        "Execute this SQL directly",
-        true,
-        sql,
-        sessionId
-      );
-
-      const data = response.data;
-
-      // Update session ID if provided by the backend
-      if (data.session_id) {
-        setSessionId(data.session_id);
-        localStorage.setItem(`sessionId-${dbConfig.dbname}`, data.session_id);
-      }
-
-      // Create results entry
-      // eslint-disable-next-line
-      let resultContent: any[] = [];
-      let resultMessage = "";
-
-      if (data.affected !== undefined) {
-        // For modification queries with affected rows info
-        setShouldReRender(!shouldReRender);
-        resultMessage = `Operation completed. ${data.affected} rows affected.`;
-      } else if (data.result_table && data.result_table.length > 0) {
-        // For SELECT queries with data
-        resultContent = data.result_table;
-        resultMessage = `Query returned ${data.result_table.length} results`;
-      } else {
-        // Fallback for other cases
-        resultContent = data.result_table || [];
-        resultMessage = "Query executed successfully";
-      }
-
-      setResults((prevResults) => [
-        ...prevResults,
-        {
-          type: "assistant",
-          responseType: "success",
-          content: resultContent,
-          sql: data.sql,
-          message: resultMessage,
-          sqlType: data.sql_type,
-          affectedRows: data.affected,
-          isQAResponse: false,
-        },
-      ]);
-
-      // eslint-disable-next-line
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        "An error occurred while executing the extracted SQL";
-
-      setResults((prevResults) => [
-        ...prevResults,
-        {
-          type: "assistant",
-          responseType: "error",
-          message: errorMessage,
-          sql: err.response?.data?.sql || "",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-      scrollToBottom();
-    }
+    setActiveCodeIndex((prev) => (prev === index ? null : index));
   };
 
   // Scroll chat to bottom
@@ -143,97 +69,35 @@ export default function Query() {
     }, 100);
   };
 
-  // Send query to backend
-  const sendQuery = async (confirmed = false): Promise<void> => {
-    if (!query.trim() && !confirmed) return;
-
-    setLoading(true);
-
-    // Use the pending query from confirmation dialog if confirmed is true
-    const queryToSend = confirmed ? confirmationDialog.pendingQuery : query;
-
+  // Execute a raw SQL string via the /execute-sql endpoint
+  const executeExtractedSql = async (sql: string): Promise<void> => {
     try {
-      // Add the user query to results only when not confirmed
-      // This prevents duplicate user messages
-      if (!confirmed) {
-        setResults((prevResults) => [
-          ...prevResults,
-          {
-            type: "user",
-            content: [],
-            message: queryToSend,
-          },
-        ]);
-      }
+      setLoading(true);
 
-      const response = await sendQueryToBackend(
-        dbConfig,
-        queryToSend,
-        confirmed,
-        confirmed ? confirmationDialog.sql : "",
-        sessionId
-      );
-
+      const response = await sendSqlToBackend(dbConfig, sql, true, sessionId);
       const data = response.data;
 
-      // Update session ID if provided by the backend
       if (data.session_id) {
         setSessionId(data.session_id);
         localStorage.setItem(`sessionId-${dbConfig.dbname}`, data.session_id);
       }
 
-      // Handle confirmation request from backend
-      if (data.needs_confirmation) {
-        setConfirmationDialog({
-          open: true,
-          sql: data.sql_preview,
-          pendingQuery: queryToSend,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Create results entry
-      // eslint-disable-next-line
-      let resultContent: any[] = [];
+      let resultContent: Record<string, unknown>[] = [];
       let resultMessage = "";
 
-      // Check if this is a QA response
-      const isQAResponse =
-        data.result_table &&
-        data.result_table.length === 1 &&
-        Object.keys(data.result_table[0]).length === 1 &&
-        Object.keys(data.result_table[0])[0] === "output";
-
-      // Special handling for QA responses that contain SQL statements
-      let extractedSql = null;
-      if (isQAResponse && data.result_table[0].output) {
-        extractedSql = extractSqlFromQaOutput(data.result_table[0].output);
-      }
-
-      if (data.result_table && data.result_table.length > 0) {
-        console.log("first");
-        // For SELECT queries with data
+      if (data.affected !== undefined) {
+        setShouldReRender((prev) => !prev);
+        resultMessage = `Operation completed. ${data.affected} rows affected.`;
+      } else if (data.result_table?.length) {
         resultContent = data.result_table;
-        resultMessage =
-          data.message || `Query returned ${data.result_table.length} results`;
-      } else if (data.affected !== undefined) {
-        console.log("second");
-        // For modification queries with affected rows info
-        setShouldReRender(!shouldReRender);
-        resultContent = [];
-        resultMessage =
-          data.message ||
-          `Operation completed. ${data.affected} rows affected.`;
+        resultMessage = `Query returned ${data.result_table.length} results`;
       } else {
-        setShouldReRender(!shouldReRender);
-        // Fallback for other cases
         resultContent = data.result_table || [];
-        resultMessage = data.message || "Query executed successfully";
+        resultMessage = "Query executed successfully";
       }
 
-      setResults((prevResults) => [
-        ...prevResults,
+      setResults((prev) => [
+        ...prev,
         {
           type: "assistant",
           responseType: "success",
@@ -242,42 +106,166 @@ export default function Query() {
           message: resultMessage,
           sqlType: data.sql_type,
           affectedRows: data.affected,
-          isQAResponse: isQAResponse,
-          extractedSql: extractedSql,
+          isQAResponse: false,
+          isSQL: true,
         },
       ]);
+    } catch (err: unknown) {
+      const error = err as AxiosError<{ error?: string; sql?: string }>;
 
-      setQuery("");
-
-      // eslint-disable-next-line
-    } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error ||
-        "An error occurred while processing your query";
-
-      setResults((prevResults) => [
-        ...prevResults,
+      setResults((prev) => [
+        ...prev,
         {
           type: "assistant",
           responseType: "error",
-          message: errorMessage,
-          sql: err.response?.data?.sql || "",
+          message:
+            error.response?.data?.error ||
+            "An error occurred while executing the extracted SQL",
+          sql: error.response?.data?.sql,
+          isSQL: true,
         },
       ]);
     } finally {
       setLoading(false);
       scrollToBottom();
+    }
+  };
+
+  /**
+   * Send either a natural-language query (/query) or raw SQL (/execute-sql).
+   * @param mode "nl" for NL→SQL, "sql" for direct SQL
+   * @param confirmed whether the user has confirmed a destructive operation
+   */
+  const sendQuery = async (
+    mode: Mode = "nl",
+    confirmed = false
+  ): Promise<void> => {
+    // if no input (and not confirmation retry), bail
+    if (!query.trim() && !(confirmed && mode === "sql")) return;
+
+    setLoading(true);
+    const textToSend = confirmed
+      ? confirmationDialog.pendingQuery
+      : query.trim();
+
+    // show the user's message
+    if (!confirmed) {
+      setResults((prev) => [
+        ...prev,
+        { type: "user", message: textToSend, isSQL: mode === "sql" },
+      ]);
+    }
+
+    try {
+      const response =
+        mode === "nl"
+          ? await sendQueryToBackend(
+              dbConfig,
+              textToSend,
+              confirmed,
+              confirmed ? confirmationDialog.sql : "",
+              sessionId
+            )
+          : await sendSqlToBackend(dbConfig, textToSend, confirmed, sessionId);
+
+      const data = response.data;
+
+      if (data.session_id) {
+        setSessionId(data.session_id);
+        localStorage.setItem(`sessionId-${dbConfig.dbname}`, data.session_id);
+      }
+
+      if (mode === "nl" && data.needs_confirmation) {
+        setConfirmationDialog({
+          open: true,
+          sql: data.sql_preview,
+          pendingQuery: textToSend,
+          mode: "nl",
+        });
+        setLoading(false);
+        return;
+      }
+
+      let resultContent: Record<string, unknown>[] = [];
+      let resultMessage = "";
+
+      const isQAResponse =
+        Array.isArray(data.result_table) &&
+        data.result_table.length === 1 &&
+        Object.keys(data.result_table[0]).length === 1 &&
+        Object.keys(data.result_table[0])[0] === "output";
+
+      let extractedSql: string | null = null;
+      if (isQAResponse) {
+        extractedSql = extractSqlFromQaOutput(
+          data.result_table[0].output as string
+        );
+      }
+
+      if (Array.isArray(data.result_table) && data.result_table.length > 0) {
+        resultContent = data.result_table;
+        resultMessage =
+          data.message || `Query returned ${data.result_table.length} results`;
+      } else if (data.affected !== undefined) {
+        setShouldReRender((prev) => !prev);
+        resultMessage =
+          data.message ||
+          `Operation completed. ${data.affected} rows affected.`;
+      } else {
+        resultContent = data.result_table || [];
+        resultMessage = data.message || "Query executed successfully";
+      }
+
+      setResults((prev) => [
+        ...prev,
+        {
+          type: "assistant",
+          responseType: "success",
+          content: resultContent,
+          sql: data.sql,
+          message: resultMessage,
+          sqlType: data.sql_type,
+          affectedRows: data.affected,
+          isQAResponse,
+          extractedSql,
+          isSQL: mode === "sql",
+        },
+      ]);
+
       setQuery("");
+    } catch (err: unknown) {
+      const error = err as AxiosError<{ error?: string; sql?: string }>;
+
+      setResults((prev) => [
+        ...prev,
+        {
+          type: "assistant",
+          responseType: "error",
+          message:
+            error.response?.data?.error ||
+            "An error occurred while processing your query",
+          sql: error.response?.data?.sql,
+          isSQL: mode === "sql",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      scrollToBottom();
     }
   };
 
   const confirmAndSendQuery = (): void => {
     setConfirmationDialog((prev) => ({ ...prev, open: false }));
-    sendQuery(true);
+    sendQuery(confirmationDialog.mode, true);
   };
 
   const cancelQuery = (): void => {
-    setConfirmationDialog({ open: false, sql: "", pendingQuery: "" });
+    setConfirmationDialog({
+      open: false,
+      sql: "",
+      pendingQuery: "",
+      mode: "nl",
+    });
     setLoading(false);
   };
 
@@ -285,7 +273,6 @@ export default function Query() {
     const newSessionId = resetSessionId(dbConfig.dbname);
     setSessionId(newSessionId);
     setResults([]);
-
     alert("Conversation history has been reset.");
   };
 
@@ -294,7 +281,6 @@ export default function Query() {
       <div className={`w-[25rem] ${showSidebar ? "block" : "hidden"}`}>
         <SchemaSidebar shouldReRender={shouldReRender} />
       </div>
-
       <div
         className={`flex-1 flex flex-col ${
           showSidebar ? "w-[calc(100%-25rem)]" : "w-full"
@@ -319,7 +305,7 @@ export default function Query() {
           query={query}
           setQuery={setQuery}
           loading={loading}
-          onSubmit={() => sendQuery()}
+          onSubmit={(mode) => sendQuery(mode)}
         />
       </div>
 
