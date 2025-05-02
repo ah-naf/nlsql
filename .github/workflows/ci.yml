@@ -77,6 +77,7 @@ jobs:
           cat <<EOF > .env
           LLM_API_KEY=${{ secrets.LLM_API_KEY }}
           LLM_API_URL=${{ secrets.LLM_API_URL }}
+          GEMINI_API_URL=${{ secrets.GEMINI_API_URL }}
           LLM_API_MODEL_NAME=${{ secrets.LLM_API_MODEL_NAME }}
           EOF
 
