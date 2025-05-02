@@ -1,80 +1,100 @@
-# NL→SQL Chat
+# NL→SQL
 
 A simple web application that lets you ask natural-language questions about your PostgreSQL database and have them converted into SQL queries by an LLM. It includes schema browsing, query confirmation for destructive statements, and result display with pagination and hover-tooltips.
 
-## Features
+---
+
+## ✨ Features
 
 - **Natural Language → SQL**: Describe what you want in plain English, and the app generates a SQL statement.
 - **Schema Browser**: View tables, columns, data types, primary/foreign key badges, and search/filter tables.
-- **Confirmation Flow**: Destructive operations (INSERT/UPDATE/DELETE/ALTER/CREATE/DROP) are flagged and require user confirmation.
-- **Result Rendering**: SELECT results show in a responsive, truncated table with hover popovers for long text.
-- **Database Selection & Creation**: Connect to an existing database or create a new one from the UI.
+- **Confirmation Flow**: Destructive operations (INSERT, UPDATE, DELETE, etc.) require confirmation.
+- **Result Rendering**: Paginated, responsive table with hover popovers for long content.
+- **Database Connection**: Connect to or create databases directly from the UI.
 
-## How It Works
+---
 
-1. **Backend (Go / Gin)**
-   - **Session Middleware** stores connection credentials.
-   - **Handlers**:
-     - `ShowConnectForm` / `ConnectDB` → initial Postgres connection.
-     - `ShowDBForm` / `SelectDB` → list or create databases and save `connection_string` in session.
-     - `ShowQueryPage` → serve the chat interface with preloaded schema.
-     - `HandleNLQuery` → bind JSON, rebuild prompt with schema, call Together AI LLM, return SQL preview, execute if `SELECT`, and refresh schema for DML.
-   - **Schema Module** (`models/db.go`) inspects `information_schema` for columns, PK/FK metadata.
-2. **LLM Integration**
-   - Uses Together AI’s API (`meta-llama/Llama-3.3-70B-Instruct-Turbo-Free` model) to translate English into SQL.
-   - Requires an environment variable `LLM_API_KEY` with your Together AI API key.
+## 🔧 Environment Variables
 
-## Installation & Setup
+Place a `.env` file at the project root with the following:
 
-1. **Clone the repository**
+```ini
+# For Together AI (default)
+LLM_API_KEY=your-together-api-key
+LLM_API_URL=https://api.together.xyz/v1/chat/completions
+LLM_API_MODEL_NAME=meta-llama/Llama-3-70B-Instruct
 
-   ```bash
-   git clone https://github.com/ah-naf/nlsql.git
-   cd nlsql
-   ```
+# OR for Gemini (optional alternative)
+GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=your-gemini-api-key
+````
 
-2. **Install Go (1.20+)**
-   Make sure `go` is in your PATH and version is at least 1.20.
+## 🚀 Local Development
 
-3. **Fetch dependencies**
+### 1. Clone the repository
 
-   ```bash
-   cd backend
-   go mod tidy
-   ```
+```bash
+git clone https://github.com/ah-naf/nlsql.git
+cd nlsql
+```
 
-4. **Set environment variables**
-   Create a `.env` file in the project root (or export in your shell):
+### 2. Backend setup
 
-   ```ini
-   LLM_API_KEY=your-together-ai-key
-   ```
+```bash
+cd backend
+go mod tidy
+```
 
-5. **Setup Frontend**
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   ```
-6. **Run the server**
-   ```bash
-   cd backend
-   go run cmd/main.go
-   ```
-   By default, the app listens on `http://localhost:8080`.
+### 3. Frontend setup
 
-## Usage
+```bash
+cd ../frontend
+npm install
+npm run build
+```
 
-1. **Browse to** `http://localhost:8080`.
-2. **Connect** to your Postgres server using the form.
-3. **Select** an existing database or **create** a new one.
-4. **Ask** questions in natural language, e.g.:
-   - "Show me all users who signed up in the last 7 days"
-   - "Add a new product named 'Gadget' with price 19.99"
-5. **Review** the generated SQL in the chat bubble.
-6. **Confirm** if it’s a destructive query.
-7. **View** results directly in the chat or see a success message for updates.
+### 4. Run the application
 
-## License
+```bash
+cd ../backend
+go run cmd/main.go
+```
 
-This project is open-source and available under the MIT License.
+Open `http://localhost:8080` in your browser.
+
+---
+
+## 🐳 Run with Docker
+
+This project supports multi-stage Docker builds (frontend + backend). Here's how to build and run:
+
+### 1. Build the image
+
+```bash
+docker build -t nlsql-app .
+```
+
+### 2. Run the container
+
+```bash
+docker run -p 8080:8080 nlsql-app
+```
+
+> Make sure your PostgreSQL instance is accessible from the container.
+
+### 3. Open the app
+
+Visit: [http://localhost:8080](http://localhost:8080)
+
+---
+
+## 💡 Example Prompts
+
+* `Show all orders placed in the last 24 hours`
+* `Add a new user named Alice with email alice@example.com`
+* `Delete all rows from temp_sessions table`
+
+---
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
