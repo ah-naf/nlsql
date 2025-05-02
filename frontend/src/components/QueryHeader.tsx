@@ -13,6 +13,7 @@ export default function QueryHeader({
   resetConversation,
 }: QueryHeaderProps) {
   const navigate = useNavigate();
+  const dbConfig = JSON.parse(localStorage.getItem("dbConfig") || "{}");
 
   return (
     <header className="border-b p-4 bg-white flex justify-between items-center">
@@ -37,7 +38,15 @@ export default function QueryHeader({
         </Button>
         <Button
           className="bg-gray-700 hover:bg-gray-800 text-white"
-          onClick={() => navigate("/select")}
+          onClick={() => {
+            if (dbConfig && dbConfig.provider == "demo") {
+              localStorage.removeItem("dbConfig");
+              localStorage.removeItem("databases");
+              window.location.href = "/";
+              return;
+            }
+            navigate("/select");
+          }}
         >
           Change DB
         </Button>
