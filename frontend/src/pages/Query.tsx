@@ -14,6 +14,7 @@ import {
   getSessionId,
   resetSessionId,
 } from "../utils/dbUtils";
+import { AxiosError } from "axios";
 
 type Mode = "nl" | "sql";
 
@@ -109,16 +110,18 @@ export default function Query() {
           isSQL: true,
         },
       ]);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as AxiosError<{ error?: string; sql?: string }>;
+
       setResults((prev) => [
         ...prev,
         {
           type: "assistant",
           responseType: "error",
           message:
-            err.response?.data?.error ||
+            error.response?.data?.error ||
             "An error occurred while executing the extracted SQL",
-          sql: err.response?.data?.sql,
+          sql: error.response?.data?.sql,
           isSQL: true,
         },
       ]);
@@ -230,16 +233,18 @@ export default function Query() {
       ]);
 
       setQuery("");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as AxiosError<{ error?: string; sql?: string }>;
+
       setResults((prev) => [
         ...prev,
         {
           type: "assistant",
           responseType: "error",
           message:
-            err.response?.data?.error ||
+            error.response?.data?.error ||
             "An error occurred while processing your query",
-          sql: err.response?.data?.sql,
+          sql: error.response?.data?.sql,
           isSQL: mode === "sql",
         },
       ]);
