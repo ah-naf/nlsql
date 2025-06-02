@@ -98,3 +98,21 @@ Visit: [http://localhost:8080](http://localhost:8080)
 ## 📄 License
 
 This project is open-source and available under the [MIT License](LICENSE).
+
+## Backend Workflow
+
+```mermaid
+graph TD
+    A[User Request NLQ/Direct SQL] --> B{API Routing};
+    B -- NLQ --> C[Table Detection LLM];
+    C --> D[SQL Generation LLM with Schema/History];
+    D --> E{Destructive Query?};
+    B -- Direct SQL --> F[Direct SQL Execution Path];
+    F --> E;
+    E -- Yes --> G[Confirmation Step];
+    G --> H[SQL Execution];
+    E -- No --> H;
+    H --> I[Response Generation];
+    I --> J[Store Interaction in History];
+    J --> K[End];
+```
